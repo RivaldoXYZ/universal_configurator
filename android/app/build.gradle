@@ -1,0 +1,38 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'dev.flutter.flutter-gradle-plugin'
+}
+
+android {
+    namespace = 'com.example.universalconfigurator'
+    compileSdk = 34 // Example version; adjust to your Flutter settings
+    ndkVersion = "25.2.9519653" // Example version; adjust to your Flutter settings
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    defaultConfig {
+        applicationId = "com.example.universalconfigurator"
+        minSdk = 21 // Example version; adjust to your Flutter settings
+        targetSdk = 34 // Example version; adjust to your Flutter settings
+        versionCode = 1 // Example value; adjust to your Flutter settings
+        versionName = "1.0" // Example value; adjust to your Flutter settings
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source = "../.."
+}
