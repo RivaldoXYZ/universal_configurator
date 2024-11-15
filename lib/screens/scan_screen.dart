@@ -4,7 +4,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'device_screen.dart';
 import '../utils/snackbar.dart';
 import '../widgets/scan_result_tile.dart';
-import '../utils/extra.dart';
+import 'Security.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -16,7 +16,7 @@ class ScanScreen extends StatefulWidget {
 class _ScanScreenState extends State<ScanScreen> {
   List<BluetoothDevice> _systemDevices = [];
   List<ScanResult> _scanResults = [];
-  final List<String> _connectedDevices = []; // Keep track of connected devices
+  final List<String> _connectedDevices = []; // Track connected devices
   bool _isScanning = false;
 
   late StreamSubscription<List<ScanResult>> _scanResultsSubscription;
@@ -52,7 +52,7 @@ class _ScanScreenState extends State<ScanScreen> {
   Future<void> onScanPressed() async {
     try {
       _systemDevices = await FlutterBluePlus.systemDevices;
-      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
     } catch (e) {
       Snackbar.show(ABC.b, prettyException("Scan Error:", e), success: false);
     }
@@ -66,85 +66,93 @@ class _ScanScreenState extends State<ScanScreen> {
     }
   }
 
-  void onConnectPressed(BluetoothDevice device) {
-    device.connectAndUpdateStream().then((_) {
-      device.connectionState.listen((connectionState) {
-        if (connectionState == BluetoothConnectionState.disconnected) {
-          setState(() {
-            _connectedDevices.remove(device.remoteId.str);
-          });
-          Snackbar.show(ABC.b, "Disconnected from ${device.remoteId.str}", success: true);
-        } else if (connectionState == BluetoothConnectionState.connected) {
-          if (!_connectedDevices.contains(device.remoteId.str)) {
-            setState(() {
-              _connectedDevices.add(device.remoteId.str);
-            });
-          }
-        }
-      });
-    }).catchError((e) {
-      Snackbar.show(ABC.c, prettyException("Connect Error:", e), success: false);
-    });
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (context) => DeviceScreen(device: device),
-      settings: const RouteSettings(name: '/DeviceScreen'),
-    ));
-  }
+  Future<void> onConnectPressed(BluetoothDevice device) async {
+    if (!await device.isConnected) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => AuthenticationPage(
+            onPinEntered: (pin) async {
+              if (pin == "123456") { // Customize PIN as needed
+                try {
+                  await device.connect();
+                  Snackbar.show(ABC.c, "Connect: Success", success: true);
 
-  List<Widget> _buildConnectedDeviceTiles() {
-    return _connectedDevices.map((deviceId) {
-      return ListTile(
-        title: Text(deviceId),
-        subtitle: const Text('Connected'),
-        tileColor: Colors.green[100],
-        onTap: () {
-          BluetoothDevice device = _systemDevices.firstWhere(
-                (d) => d.remoteId.str == deviceId,
-            orElse: () => throw Exception("Device not found"),
-          );
-          Navigator.of(context).push(MaterialPageRoute(
-            builder: (context) => DeviceScreen(device: device),
-            settings: const RouteSettings(name: '/DeviceScreen'),
-          ));
-        },
-        trailing: ElevatedButton(
-          onPressed: () {
-            BluetoothDevice device = _systemDevices.firstWhere(
-                  (d) => d.remoteId.str == deviceId,
-              orElse: () => throw Exception("Device not found"),
-            );
-            onDisconnectPressed(device);
-          },
-          child: const Text('DISCONNECT'),
+                  setState(() {
+                    if (!_connectedDevices.contains(device.remoteId.str)) {
+                      _connectedDevices.add(device.remoteId.str);
+                    }
+                  });
+
+                  await onRefresh();
+                  return true;
+                } catch (e) {
+                  Snackbar.show(ABC.c, prettyException("Connect Error:", e), success: false);
+                  return false;
+                }
+              } else {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Snackbar.show(ABC.c, "Incorrect PIN, please try again.", success: false);
+                });
+                return false;
+              }
+            },
+          ),
         ),
       );
-    }).toList();
+    } else {
+      setState(() {
+        if (!_connectedDevices.contains(device.remoteId.str)) {
+          _connectedDevices.add(device.remoteId.str);
+        }
+      });
+      await onRefresh();
+    }
   }
 
-  Future<void> onDisconnectPressed(BluetoothDevice device) {
-    return device.disconnect().then((_) {
+  Future<void> onDisconnectPressed(BluetoothDevice device) async {
+    try {
+      await device.disconnect();
       setState(() {
-        _connectedDevices.remove(device.remoteId.str);
+        _connectedDevices.removeWhere((id) => id == device.remoteId.str);
       });
       Snackbar.show(ABC.b, "Disconnected from ${device.remoteId.str}", success: true);
-    }).catchError((e) {
+    } catch (e) {
       Snackbar.show(ABC.c, prettyException("Disconnect Error:", e), success: false);
-    });
+    }
   }
 
   Future<void> onRefresh() async {
     if (!_isScanning) {
       onScanPressed();
     }
-    return Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    setState(() {
+      _connectedDevices.retainWhere((id) {
+        return _systemDevices.any((device) => device.remoteId.str == id);
+      });
+    });
   }
 
-  Widget buildScanButton(BuildContext context) {
-    return FloatingActionButton(
-      onPressed: _isScanning ? onStopPressed : onScanPressed,
-      backgroundColor: _isScanning ? Colors.red : Colors.blue,
-      child: Icon(_isScanning ? Icons.search_off : Icons.search),
-    );
+  List<Widget> _buildConnectedDeviceTiles() {
+    return _systemDevices.where((device) {
+      return _connectedDevices.contains(device.remoteId.str);
+    }).map((device) {
+      return ListTile(
+        title: Text(device.remoteId.str),
+        subtitle: const Text('Connected'),
+        tileColor: Colors.green[100],
+        onTap: () {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (context) => DeviceScreen(device: device),
+          ));
+        },
+        trailing: ElevatedButton(
+          onPressed: () => onDisconnectPressed(device),
+          child: const Text('DISCONNECT'),
+        ),
+      );
+    }).toList();
   }
 
   List<Widget> _buildScanResultTiles(BuildContext context) {
@@ -155,6 +163,14 @@ class _ScanScreenState extends State<ScanScreen> {
         onDisconnectPressed: () => onDisconnectPressed(r.device),
       );
     }).toList();
+  }
+
+  Widget buildScanButton(BuildContext context) {
+    return FloatingActionButton(
+      onPressed: _isScanning ? onStopPressed : onScanPressed,
+      backgroundColor: _isScanning ? Colors.red : Colors.blue,
+      child: Icon(_isScanning ? Icons.search_off : Icons.search),
+    );
   }
 
   Widget buildHeader(BuildContext context) {
@@ -205,9 +221,7 @@ class _ScanScreenState extends State<ScanScreen> {
                 onRefresh: onRefresh,
                 child: ListView(
                   children: [
-                    // Display currently connected devices
                     ..._buildConnectedDeviceTiles(),
-                    // Display scan results
                     ..._buildScanResultTiles(context),
                   ],
                 ),

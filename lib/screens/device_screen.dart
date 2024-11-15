@@ -1,287 +1,157 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-
-import '../widgets/service_tile.dart';
-import '../widgets/characteristic_tile.dart';
-import '../widgets/descriptor_tile.dart';
-import '../utils/snackbar.dart';
-import '../utils/extra.dart';
+import '../utils/json_parser.dart';
 
 class DeviceScreen extends StatefulWidget {
   final BluetoothDevice device;
 
-  const DeviceScreen({super.key, required this.device});
+  const DeviceScreen({Key? key, required this.device}) : super(key: key);
 
   @override
-  State<DeviceScreen> createState() => _DeviceScreenState();
+  _DeviceScreenState createState() => _DeviceScreenState();
 }
 
 class _DeviceScreenState extends State<DeviceScreen> {
-  int? _rssi;
-  int? _mtuSize;
   BluetoothConnectionState _connectionState = BluetoothConnectionState.disconnected;
-  List<BluetoothService> _services = [];
-  bool _isDiscoveringServices = false;
-  bool _isConnecting = false;
-  bool _isDisconnecting = false;
-
-  late StreamSubscription<BluetoothConnectionState> _connectionStateSubscription;
-  late StreamSubscription<bool> _isConnectingSubscription;
-  late StreamSubscription<bool> _isDisconnectingSubscription;
-  late StreamSubscription<int> _mtuSubscription;
+  List<ConfigParameter> configParameters = []; // Parsed JSON data
 
   @override
   void initState() {
     super.initState();
-
-    _connectionStateSubscription = widget.device.connectionState.listen((state) async {
+    widget.device.connectionState.listen((state) {
       _connectionState = state;
-      if (state == BluetoothConnectionState.connected) {
-        _services = []; // must rediscover services
+      if (_connectionState == BluetoothConnectionState.connected) {
+        discoverServicesAndReadData(); // Proceed with reading services
       }
-      if (state == BluetoothConnectionState.connected && _rssi == null) {
-        _rssi = await widget.device.readRssi();
-      }
-      if (mounted) {
-        setState(() {});
-      }
+      setState(() {}); // Update the UI when connection state changes
     });
-
-    _mtuSubscription = widget.device.mtu.listen((value) {
-      _mtuSize = value;
-      if (mounted) {
-        setState(() {});
-      }
-    });
-
-    _isConnectingSubscription = widget.device.isConnecting.listen((value) {
-      _isConnecting = value;
-      if (mounted) {
-        setState(() {});
-      }
-    });
-
-    _isDisconnectingSubscription = widget.device.isDisconnecting.listen((value) {
-      _isDisconnecting = value;
-      if (mounted) {
-        setState(() {});
-      }
-    });
+    connectToDevice(); // Initiate the connection process
   }
 
-  @override
-  void dispose() {
-    _connectionStateSubscription.cancel();
-    _mtuSubscription.cancel();
-    _isConnectingSubscription.cancel();
-    _isDisconnectingSubscription.cancel();
-    super.dispose();
+  Future<void> connectToDevice() async {
+    try {
+      await widget.device.connect();
+      print("Connected to device.");
+    } catch (e) {
+      print("Error connecting to device: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Failed to connect to device: $e")),
+      );
+    }
   }
 
-  bool get isConnected {
-    return _connectionState == BluetoothConnectionState.connected;
+  Future<void> discoverServicesAndReadData() async {
+    try {
+      print("Discovering services...");
+      List<BluetoothService> services = await widget.device.discoverServices();
+      for (var service in services) {
+        for (var characteristic in service.characteristics) {
+          if (characteristic.properties.read &&
+              characteristic.uuid.toString() == 'abcdefab-1234-5678-1234-abcdefabcdef') {
+            await readAndParseCharacteristic(characteristic);
+            return;
+          }
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("No JSON characteristic found.")),
+      );
+    } catch (e) {
+      print("Error discovering services: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error discovering services: $e")),
+      );
+    }
   }
 
-  Future<void> readCharacteristic(BluetoothCharacteristic characteristic) async {
+  Future<void> readAndParseCharacteristic(BluetoothCharacteristic characteristic) async {
     try {
       List<int> value = await characteristic.read();
-      String receivedValue = String.fromCharCodes(value);
-      Snackbar.show(ABC.c, "Received: $receivedValue", success: true);
+      String jsonString = String.fromCharCodes(value);
+      configParameters = parseConfig(jsonString);
+      setState(() {}); // Update the UI with parsed data
     } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Read Error:", e), success: false);
-    }
-  }
-
-  Future<void> writeCharacteristic(BluetoothCharacteristic characteristic, String value) async {
-    try {
-      await characteristic.write(value.codeUnits);
-      Snackbar.show(ABC.c, "Write: Success", success: true);
-    } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Write Error:", e), success: false);
-    }
-  }
-
-// Update the _buildCharacteristicTile method to add read and write buttons
-  CharacteristicTile _buildCharacteristicTile(BluetoothCharacteristic c) {
-    return CharacteristicTile(
-      characteristic: c,
-      descriptorTiles: c.descriptors.map((d) => DescriptorTile(descriptor: d)).toList(),
-      // Add buttons for reading and writing
-      onRead: () => readCharacteristic(c),
-      onWrite: (String value) => writeCharacteristic(c, value),
-    );
-  }
-
-  Future onConnectPressed() async {
-    try {
-      await widget.device.connectAndUpdateStream();
-      Snackbar.show(ABC.c, "Connect: Success", success: true);
-    } catch (e) {
-      if (e is FlutterBluePlusException && e.code == FbpErrorCode.connectionCanceled.index) {
-        // ignore connections canceled by the user
-      } else {
-        Snackbar.show(ABC.c, prettyException("Connect Error:", e), success: false);
-      }
-    }
-  }
-
-  Future onCancelPressed() async {
-    try {
-      await widget.device.disconnectAndUpdateStream(queue: false);
-      Snackbar.show(ABC.c, "Cancel: Success", success: true);
-    } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Cancel Error:", e), success: false);
-    }
-  }
-
-  Future onDisconnectPressed() async {
-    try {
-      await widget.device.disconnectAndUpdateStream();
-      Snackbar.show(ABC.c, "Disconnect: Success", success: true);
-    } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Disconnect Error:", e), success: false);
-    }
-  }
-
-  Future onDiscoverServicesPressed() async {
-    if (mounted) {
-      setState(() {
-        _isDiscoveringServices = true;
-      });
-    }
-    try {
-      _services = await widget.device.discoverServices();
-      Snackbar.show(ABC.c, "Discover Services: Success", success: true);
-    } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Discover Services Error:", e), success: false);
-    }
-    if (mounted) {
-      setState(() {
-        _isDiscoveringServices = false;
-      });
-    }
-  }
-
-  Future onRequestMtuPressed() async {
-    try {
-      await widget.device.requestMtu(223, predelay: 0);
-      Snackbar.show(ABC.c, "Request Mtu: Success", success: true);
-    } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Change Mtu Error:", e), success: false);
-    }
-  }
-
-  List<Widget> _buildServiceTiles(BuildContext context, BluetoothDevice d) {
-    return _services.map((s) {
-      return ServiceTile(
-        service: s,
-        characteristicTiles: s.characteristics.map((c) => _buildCharacteristicTile(c)).toList(),
+      print("Error reading characteristic: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error reading characteristic: $e")),
       );
-    }).toList();
+    }
   }
 
-
-  Widget buildSpinner(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(14.0),
-      child: AspectRatio(
-        aspectRatio: 1.0,
-        child: CircularProgressIndicator(
-          backgroundColor: Colors.black12,
-          color: Colors.black26,
-        ),
-      ),
+  Future<void> refreshData() async {
+    await discoverServicesAndReadData();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Data refreshed!")),
     );
-  }
-
-  Widget buildRemoteId(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Text('${widget.device.remoteId}'),
-    );
-  }
-
-  Widget buildRssiTile(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        isConnected ? const Icon(Icons.bluetooth_connected) : const Icon(Icons.bluetooth_disabled),
-        Text(((isConnected && _rssi != null) ? '${_rssi!} dBm' : ''), style: Theme.of(context).textTheme.bodySmall)
-      ],
-    );
-  }
-
-  Widget buildGetServices(BuildContext context) {
-    return IndexedStack(
-      index: (_isDiscoveringServices) ? 1 : 0,
-      children: <Widget>[
-        TextButton(
-          onPressed: onDiscoverServicesPressed,
-          child: const Text("Get Services"),
-        ),
-        const IconButton(
-          icon: SizedBox(
-            width: 18.0,
-            height: 18.0,
-            child: CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation(Colors.grey),
-            ),
-          ),
-          onPressed: null,
-        )
-      ],
-    );
-  }
-
-  Widget buildMtuTile(BuildContext context) {
-    return ListTile(
-        title: const Text('MTU Size'),
-        subtitle: Text('$_mtuSize bytes'),
-        trailing: IconButton(
-          icon: const Icon(Icons.edit),
-          onPressed: onRequestMtuPressed,
-        ));
-  }
-
-  Widget buildConnectButton(BuildContext context) {
-    return Row(children: [
-      if (_isConnecting || _isDisconnecting) buildSpinner(context),
-      TextButton(
-          onPressed: _isConnecting ? onCancelPressed : (isConnected ? onDisconnectPressed : onConnectPressed),
-          child: Text(
-            _isConnecting ? "CANCEL" : (isConnected ? "DISCONNECT" : "CONNECT"),
-            style: Theme.of(context).primaryTextTheme.labelLarge?.copyWith(color: Colors.white),
-          ))
-    ]);
   }
 
   @override
   Widget build(BuildContext context) {
-
-    return ScaffoldMessenger(
-      key: Snackbar.snackBarKeyC,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.device.platformName),
-          actions: [buildConnectButton(context)],
-        ),
-        body: SingleChildScrollView(
-          child: Column(
-            children: <Widget>[
-              buildRemoteId(context),
-              ListTile(
-                leading: buildRssiTile(context),
-                title: Text('Device is ${_connectionState.toString().split('.')[1]}.'),
-                trailing: buildGetServices(context),
-              ),
-              buildMtuTile(context),
-              ..._buildServiceTiles(context, widget.device),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Device Configuration"),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: refreshData,
           ),
-        ),
+        ],
       ),
+      body: _connectionState == BluetoothConnectionState.connected
+          ? buildConfigForm()
+          : Center(child: CircularProgressIndicator()),
     );
+  }
+
+  Widget buildConfigForm() {
+    return ListView.builder(
+      itemCount: configParameters.length,
+      itemBuilder: (context, index) {
+        final param = configParameters[index];
+        TextEditingController controller = TextEditingController(text: param.value);
+
+        return Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Card(
+            elevation: 4,
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    param.desc,
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  SizedBox(height: 8),
+                  TextFormField(
+                    controller: controller,
+                    decoration: InputDecoration(
+                      labelText: 'Value',
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (newValue) {
+                      param.value = newValue; // Update the parameter value
+                    },
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    "Type: ${param.type}",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    widget.device.disconnect();
+    super.dispose();
   }
 }
