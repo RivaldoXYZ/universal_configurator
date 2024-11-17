@@ -4,7 +4,6 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'device_screen.dart';
 import '../utils/snackbar.dart';
 import '../widgets/scan_result_tile.dart';
-import 'Security.dart';
 
 class ScanScreen extends StatefulWidget {
   const ScanScreen({super.key});
@@ -28,11 +27,13 @@ class _ScanScreenState extends State<ScanScreen> {
 
     _scanResultsSubscription = FlutterBluePlus.scanResults.listen((results) {
       setState(() {
-        _scanResults = results; // Show all scan results
+        _scanResults = results
+            .where((result) => !_connectedDevices.contains(result.device.remoteId.str))
+            .toList(); // Filter out connected devices
       });
       print("Scan Results: ${_scanResults.length} devices found");
     }, onError: (e) {
-      Snackbar.show(ABC.b, prettyException("Scan Error:", e), success: false);
+      Snackbar.show(ABC.b, "Scan Error: $e", success: false);
     });
 
     _isScanningSubscription = FlutterBluePlus.isScanning.listen((state) {
@@ -40,6 +41,19 @@ class _ScanScreenState extends State<ScanScreen> {
         _isScanning = state;
       });
     });
+
+    loadConnectedDevices();
+  }
+
+  Future<void> loadConnectedDevices() async {
+    try {
+      _systemDevices = await FlutterBluePlus.connectedDevices;
+      setState(() {
+        _connectedDevices.addAll(_systemDevices.map((device) => device.remoteId.str));
+      });
+    } catch (e) {
+      print("Error loading connected devices: $e");
+    }
   }
 
   @override
@@ -54,7 +68,7 @@ class _ScanScreenState extends State<ScanScreen> {
       _systemDevices = await FlutterBluePlus.systemDevices;
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
     } catch (e) {
-      Snackbar.show(ABC.b, prettyException("Scan Error:", e), success: false);
+      Snackbar.show(ABC.b, "Scan Error: $e", success: false);
     }
   }
 
@@ -62,50 +76,27 @@ class _ScanScreenState extends State<ScanScreen> {
     try {
       await FlutterBluePlus.stopScan();
     } catch (e) {
-      Snackbar.show(ABC.b, prettyException("Stop Scan Error:", e), success: false);
+      Snackbar.show(ABC.b, "Stop Scan Error: $e", success: false);
     }
   }
 
   Future<void> onConnectPressed(BluetoothDevice device) async {
     if (!await device.isConnected) {
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (context) => AuthenticationPage(
-            onPinEntered: (pin) async {
-              if (pin == "123456") { // Customize PIN as needed
-                try {
-                  await device.connect();
-                  Snackbar.show(ABC.c, "Connect: Success", success: true);
+      try {
+        await device.connect();
+        Snackbar.show(ABC.c, "Connect: Success", success: true);
 
-                  setState(() {
-                    if (!_connectedDevices.contains(device.remoteId.str)) {
-                      _connectedDevices.add(device.remoteId.str);
-                    }
-                  });
+        setState(() {
+          if (!_connectedDevices.contains(device.remoteId.str)) {
+            _connectedDevices.add(device.remoteId.str);
+          }
+          _scanResults.removeWhere((result) => result.device.remoteId.str == device.remoteId.str);
+        });
 
-                  await onRefresh();
-                  return true;
-                } catch (e) {
-                  Snackbar.show(ABC.c, prettyException("Connect Error:", e), success: false);
-                  return false;
-                }
-              } else {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  Snackbar.show(ABC.c, "Incorrect PIN, please try again.", success: false);
-                });
-                return false;
-              }
-            },
-          ),
-        ),
-      );
-    } else {
-      setState(() {
-        if (!_connectedDevices.contains(device.remoteId.str)) {
-          _connectedDevices.add(device.remoteId.str);
-        }
-      });
-      await onRefresh();
+        await onRefresh();
+      } catch (e) {
+        Snackbar.show(ABC.c, "Connect Error: $e", success: false);
+      }
     }
   }
 
@@ -117,27 +108,28 @@ class _ScanScreenState extends State<ScanScreen> {
       });
       Snackbar.show(ABC.b, "Disconnected from ${device.remoteId.str}", success: true);
     } catch (e) {
-      Snackbar.show(ABC.c, prettyException("Disconnect Error:", e), success: false);
+      Snackbar.show(ABC.c, "Disconnect Error: $e", success: false);
     }
   }
 
   Future<void> onRefresh() async {
-    if (!_isScanning) {
-      onScanPressed();
-    }
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    setState(() {
-      _connectedDevices.retainWhere((id) {
-        return _systemDevices.any((device) => device.remoteId.str == id);
+    try {
+      _systemDevices = await FlutterBluePlus.connectedDevices;
+      setState(() {
+        _connectedDevices
+          ..clear()
+          ..addAll(_systemDevices.map((device) => device.remoteId.str));
+        _scanResults = _scanResults
+            .where((result) => !_connectedDevices.contains(result.device.remoteId.str))
+            .toList(); // Filter out connected devices
       });
-    });
+    } catch (e) {
+      print("Error refreshing devices: $e");
+    }
   }
 
   List<Widget> _buildConnectedDeviceTiles() {
-    return _systemDevices.where((device) {
-      return _connectedDevices.contains(device.remoteId.str);
-    }).map((device) {
+    return _systemDevices.map((device) {
       return ListTile(
         title: Text(device.remoteId.str),
         subtitle: const Text('Connected'),

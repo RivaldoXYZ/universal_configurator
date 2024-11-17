@@ -1,88 +1,200 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import '../utils/json_parser.dart';
+import 'package:flutter/services.dart';
+
+
+
+class ConfigParameter {
+  String key;
+  String value;
+  String type;
+  String desc;
+
+  ConfigParameter({
+    required this.key,
+    required this.value,
+    required this.type,
+    required this.desc,
+  });
+
+  factory ConfigParameter.fromJson(Map<String, dynamic> json) {
+    return ConfigParameter(
+      key: json['key'] ?? '',
+      value: json['value'] ?? '',
+      type: json['type'] ?? '',
+      desc: json['description'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'key': key,
+      'value': value,
+      'type': type,
+      'description': desc,
+    };
+  }
+}
+
 
 class DeviceScreen extends StatefulWidget {
   final BluetoothDevice device;
 
-  const DeviceScreen({Key? key, required this.device}) : super(key: key);
+  const DeviceScreen({super.key, required this.device});
 
   @override
-  _DeviceScreenState createState() => _DeviceScreenState();
+  DeviceScreenState createState() => DeviceScreenState();
 }
 
-class _DeviceScreenState extends State<DeviceScreen> {
-  BluetoothConnectionState _connectionState = BluetoothConnectionState.disconnected;
-  List<ConfigParameter> configParameters = []; // Parsed JSON data
+class DeviceScreenState extends State<DeviceScreen> {
+  List<ConfigParameter> configParameters = [];
+  BluetoothCharacteristic? targetCharacteristic;
+  bool isAuthenticated = false; // Flag to check PIN authentication
 
   @override
   void initState() {
     super.initState();
-    widget.device.connectionState.listen((state) {
-      _connectionState = state;
-      if (_connectionState == BluetoothConnectionState.connected) {
-        discoverServicesAndReadData(); // Proceed with reading services
-      }
-      setState(() {}); // Update the UI when connection state changes
-    });
-    connectToDevice(); // Initiate the connection process
+    connectToDevice();
   }
 
   Future<void> connectToDevice() async {
     try {
+      print("Connecting to device...");
       await widget.device.connect();
       print("Connected to device.");
+      // Prompt for PIN authentication
+      promptForPin();
     } catch (e) {
       print("Error connecting to device: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to connect to device: $e")),
-      );
+      showSnackbar("Failed to connect to device: $e", Colors.red);
     }
   }
 
+  Future<void> promptForPin() async {
+    TextEditingController pinController = TextEditingController();
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // Prevent closing the dialog without action
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Enter PIN"),
+          content: TextField(
+            controller: pinController,
+            obscureText: true, // Hide PIN input
+            keyboardType: TextInputType.number,
+            maxLength: 4, // Limit to 4 characters
+            inputFormatters: [
+              FilteringTextInputFormatter.digitsOnly, // Only allow numeric input
+            ],
+            decoration: const InputDecoration(
+              labelText: "PIN",
+              hintText: "Enter a 4-digit PIN", // Hint for the user
+              counterText: "", // Remove character counter
+              border: OutlineInputBorder(), // Add a border for better UI
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+                widget.device.disconnect(); // Disconnect if user cancels
+                Navigator.of(context).pop(); // Go back to previous screen
+              },
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                String enteredPin = pinController.text;
+
+                // Ensure PIN has exactly 4 digits
+                if (enteredPin.length != 4) {
+                  showSnackbar("PIN must be 4 digits.", Colors.red);
+                  return;
+                }
+
+                // Validate PIN value
+                if (enteredPin == "1234") { // Replace "1234" with your desired PIN
+                  setState(() {
+                    isAuthenticated = true;
+                  });
+                  Navigator.of(context).pop(); // Close the dialog
+                  discoverServicesAndReadData(); // Proceed to discover services
+                } else {
+                  showSnackbar("Invalid PIN. Try again.", Colors.red);
+                }
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+
+
   Future<void> discoverServicesAndReadData() async {
+    if (!isAuthenticated) return; // Prevent reading data if not authenticated
     try {
       print("Discovering services...");
       List<BluetoothService> services = await widget.device.discoverServices();
+
       for (var service in services) {
+        print("Service UUID: ${service.uuid}");
+
         for (var characteristic in service.characteristics) {
-          if (characteristic.properties.read &&
-              characteristic.uuid.toString() == 'abcdefab-1234-5678-1234-abcdefabcdef') {
-            await readAndParseCharacteristic(characteristic);
-            return;
+          print("  Checking characteristic UUID: ${characteristic.uuid}");
+
+          // Ensure the characteristic has read property
+          if (characteristic.properties.read) {
+            List<int> value = await characteristic.read();
+            String data = String.fromCharCodes(value);
+
+            // Verify if data is JSON
+            if (data.trim().startsWith("{") && data.trim().endsWith("}")) {
+              print("  JSON characteristic found: ${characteristic.uuid}");
+              targetCharacteristic = characteristic; // Save characteristic
+              setState(() {
+                configParameters = parseConfig(data);
+              });
+              return; // Exit after finding JSON characteristic
+            }
           }
         }
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("No JSON characteristic found.")),
-      );
+      showSnackbar("No JSON characteristic found.", Colors.orange);
     } catch (e) {
       print("Error discovering services: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error discovering services: $e")),
-      );
+      showSnackbar("Error discovering services: $e", Colors.red);
     }
   }
 
-  Future<void> readAndParseCharacteristic(BluetoothCharacteristic characteristic) async {
+  List<ConfigParameter> parseConfig(String jsonString) {
     try {
-      List<int> value = await characteristic.read();
-      String jsonString = String.fromCharCodes(value);
-      configParameters = parseConfig(jsonString);
-      setState(() {}); // Update the UI with parsed data
+      Map<String, dynamic> jsonData = jsonDecode(jsonString);
+      return jsonData.entries.map((entry) {
+        return ConfigParameter(
+          key: entry.key,
+          value: entry.value['value'] ?? '',
+          type: entry.value['type'] ?? '',
+          desc: entry.value['description'] ?? '',
+        );
+      }).toList();
     } catch (e) {
-      print("Error reading characteristic: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error reading characteristic: $e")),
-      );
+      print("Error parsing JSON: $e");
+      return [];
     }
   }
 
-  Future<void> refreshData() async {
-    await discoverServicesAndReadData();
+  void showSnackbar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Data refreshed!")),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: color,
+      ),
     );
   }
 
@@ -90,62 +202,79 @@ class _DeviceScreenState extends State<DeviceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Device Configuration"),
+        title: const Text("Device Configuration"),
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: refreshData,
+            icon: const Icon(Icons.refresh),
+            onPressed: () => discoverServicesAndReadData(),
           ),
         ],
       ),
-      body: _connectionState == BluetoothConnectionState.connected
+      body: isAuthenticated
+          ? (configParameters.isNotEmpty
           ? buildConfigForm()
-          : Center(child: CircularProgressIndicator()),
+          : const Center(child: CircularProgressIndicator()))
+          : const Center(
+        child: Text(
+          "Authenticate to access data",
+          style: TextStyle(fontSize: 18),
+        ),
+      ),
     );
   }
 
   Widget buildConfigForm() {
-    return ListView.builder(
-      itemCount: configParameters.length,
-      itemBuilder: (context, index) {
-        final param = configParameters[index];
-        TextEditingController controller = TextEditingController(text: param.value);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0),
+      child: ListView.builder(
+        itemCount: configParameters.length,
+        itemBuilder: (context, index) {
+          final param = configParameters[index];
+          TextEditingController controller = TextEditingController(text: param.value);
 
-        return Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Card(
-            elevation: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    param.desc,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                  SizedBox(height: 8),
-                  TextFormField(
-                    controller: controller,
-                    decoration: InputDecoration(
-                      labelText: 'Value',
-                      border: OutlineInputBorder(),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      param.desc,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     ),
-                    onChanged: (newValue) {
-                      param.value = newValue; // Update the parameter value
-                    },
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    "Type: ${param.type}",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: controller,
+                      decoration: InputDecoration(
+                        labelText: 'Value',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[200],
+                      ),
+                      onChanged: (newValue) {
+                        param.value = newValue;
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Data Type: ${param.type}",
+                      style: TextStyle(color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
