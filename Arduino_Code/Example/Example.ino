@@ -18,21 +18,26 @@ void setup() {
     ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
     ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
     // ucfg.initConfig(const String &param, const String &value, const String &description, const String &type)
+     // Tunggu hingga perangkat BLE terhubung untuk mengirim data sekali
+    Serial.println("Waiting for BLE connection...");
+    while (!ucfg.isDeviceConnected()) {
+        delay(500); // Tunggu hingga perangkat BLE terhubung
+    }
+
+    // Setelah terhubung, kirim konfigurasi
+    Serial.println("Device connected!");
+    String config = ucfg.readFromPreferences("config");
+    String config_1 = ucfg.getConfigJSON();
+    ucfg.sendConfig(); // Kirim data konfigurasi
+    Serial.println("Configuration sent!");
+    Serial.println(config);
 }
 
 void loop() {
-    if (ucfg.isDeviceConnected()) { // Mengecek apakah perangkat BLE terkoneksi
-        Serial.println("Device is connected!");    
-        // Mengambil konfigurasi yang tersimpan di Preferences dalam format JSON
-        String config = ucfg.readFromPreferences("config");
-        String config_1 = ucfg.getConfigJSON();
-        // Mengirimkan data konfigurasi ke perangkat yang terkoneksi secara terus menerus, sehingga jika ada perubahan langsung terupdate
-        ucfg.sendConfig();
-        // Menampilkan konfigurasi ke Serial Monitor
-        Serial.println("Current Configuration:");
-        Serial.println(config);
-        Serial.println(config_1);
-    } else { // Jika perangkat BLE tidak terkoneksi
+    // Kode di loop tidak melakukan pengiriman konfigurasi lagi
+    if (ucfg.isDeviceConnected()) {
+        Serial.println("Device is still connected.");
+    } else {
         Serial.println("Device is not connected.");
     }
     delay(1000); // Delay 1 detik untuk menghindari spam log

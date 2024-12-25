@@ -30,19 +30,6 @@ class DeviceScreenState extends State<DeviceScreen> {
     });
   }
 
-  Future<void> resetConfiguration() async {
-    if (!isAuthenticated || targetCharacteristic == null) {
-      showSnackbar("Device not connected or authenticated.", Colors.red);
-      return;
-    }
-    try {
-      await targetCharacteristic?.write(utf8.encode('RESET_CONFIG'));
-      showSnackbar("Configuration reset command sent.", Colors.green);
-    } catch (e) {
-      showSnackbar("Failed to send reset command: $e", Colors.red);
-    }
-  }
-
   Future<void> connectToDevice() async {
     try {
       await widget.device.connect();
@@ -122,7 +109,6 @@ class DeviceScreenState extends State<DeviceScreen> {
       showSnackbar("Error discovering services: $e", Colors.red);
     }
   }
-
   List<ConfigParameter> parseConfig(String jsonString) {
     try {
       List<dynamic> jsonArray = jsonDecode(jsonString);
@@ -139,6 +125,7 @@ class DeviceScreenState extends State<DeviceScreen> {
       return [];
     }
   }
+
 
   bool isValidValue(String value, String type) {
     switch (type.toLowerCase()) {
@@ -197,27 +184,11 @@ class DeviceScreenState extends State<DeviceScreen> {
           ),
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                ElevatedButton(
-                  onPressed: isUpdating ? null : () => updateData(),
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size(150, 50),
-                  ),
-                  child: isUpdating
-                      ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text("Update Data"),
-                ),
-                ElevatedButton(
-                  onPressed: isUpdating ? null : () => resetConfiguration(),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    minimumSize: const Size(150, 50),
-                  ),
-                  child: const Text("Reset Configuration"),
-                ),
-              ],
+            child: ElevatedButton(
+              onPressed: isUpdating ? null : () => updateData(),
+              child: isUpdating
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : const Text("Update Data"),
             ),
           ),
         ],
