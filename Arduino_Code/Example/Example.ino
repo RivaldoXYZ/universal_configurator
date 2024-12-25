@@ -1,26 +1,91 @@
-#include "UCFG.h" // Include Library Universal Configurator
+#include "UCFG.h" // Include Library Universal Configurator 
 
-UniversalConfigurator ucfg; // deklarasi pemanggilan class Universal Configurtor menjadi variabel ucfg
-
+// Deklarasi objek UniversalConfigurator sebagai ucfg
+UniversalConfigurator ucfg; // digunakan untuk mengakses semua fungsi dari Universal Configurator
 void setup() {
-    Serial.begin(115200);
-    ucfg.initBLE("MyBLEDevice"); // Panggil Fungsi untuk Menginisialisasi Bluetooth dengan memberikan Nama Device sebagai Parameter
-    ucfg.initConfig("defauld_param", "default_value", "description", "string");
+    Serial.begin(115200); // Inisialisasi komunikasi serial dengan baud rate 115200
+    // Menginisialisasi Bluetooth dengan nama perangkat "MyBLEDevice"
+    ucfg.initBLE("Seminar TA 1");
 
-    String config = ucfg.getConfigJSON(); // Memanggil fungsi getConfigJSON yang akan mengambil config JSon yang di simpan di preference
-    Serial.println("Current Configuration:");
-    Serial.println(config); //Menampilkan configurasi yang sudah tersimpan di preference
-    
+    // Membuat konfigurasi awal dengan parameter default
+    // Parameter: "defauld_param" -> key konfigurasi
+    // Value: "default_value" -> nilai default
+    // Description: "description" -> deskripsi konfigurasi
+    // Type: "string" -> tipe data
+    ucfg.initConfig("port", "1845", "Port Node Red", "int");
+    ucfg.initConfig("ipmqtt", "192.168.1.1", "IP addres MQTT Server", "string");
+    ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
+    ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
+    ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
+    // ucfg.initConfig(const String &param, const String &value, const String &description, const String &type)
 }
 
 void loop() {
-    if (ucfg.isDeviceConnected()) {
-        // Tambahkan logika Anda di sini
-        Serial.println("Device is connected!");
+    if (ucfg.isDeviceConnected()) { // Mengecek apakah perangkat BLE terkoneksi
+        Serial.println("Device is connected!");    
+        // Mengambil konfigurasi yang tersimpan di Preferences dalam format JSON
+        String config = ucfg.readFromPreferences("config");
+        String config_1 = ucfg.getConfigJSON();
+        // Mengirimkan data konfigurasi ke perangkat yang terkoneksi secara terus menerus, sehingga jika ada perubahan langsung terupdate
         ucfg.sendConfig();
-    } else {
+        // Menampilkan konfigurasi ke Serial Monitor
+        Serial.println("Current Configuration:");
+        Serial.println(config);
+        Serial.println(config_1);
+    } else { // Jika perangkat BLE tidak terkoneksi
         Serial.println("Device is not connected.");
     }
-    delay (1000);
+    delay(1000); // Delay 1 detik untuk menghindari spam log
 }
 
+/*
+-------------------- CONTOH IMPLEMENTASI  --------------------
+
+1. Inisialisasi Bluetooth dengan nama perangkat
+ucfg.initBLE("NamaPerangkatBLE");
+
+2. Membuat konfigurasi awal initConfig(parameter, nilai, deskripsi, tipe data)
+ucfg.initConfig("parameter1", "nilai1", "Deskripsi Parameter 1", "string");
+ucfg.initConfig("parameter2", "123", "Deskripsi Parameter 2", "integer");
+ucfg.initConfig("parameter3", "true", "Deskripsi Parameter 3", "boolean");
+
+3. Mengambil semua konfigurasi yang ada dalam bentuk JSON
+String konfigurasiJSON = ucfg.getConfigJSON();
+
+4. Menyimpan data JSON ke Preferences
+String dataBaru = "{\"parameter\":\"nilaiBaru\"}";
+ucfg.saveToPreferences("configBaru", dataBaru);
+
+5. Membaca data JSON dari Preferences
+String dataDariPreferences = ucfg.readFromPreferences("configBaru");
+Serial.println("Data dari Preferences:");
+Serial.println(dataDariPreferences);
+
+6. Membersihkan Preferences
+ucfg.clearPreferences();
+
+7. Mengambil atau membuat UUID baru
+String serviceUUID = ucfg.getOrCreateUUID("serviceUUID");
+String characteristicUUID = ucfg.getOrCreateUUID("characteristicUUID");
+
+
+8. Mengirimkan data konfigurasi lewat Bluetooth
+if (ucfg.isDeviceConnected()) {
+    ucfg.sendConfig();
+} else {
+    //logic jika tidak ada yang terhubung
+}
+
+9. Menerapkan pengaturan dari data JSON
+String konfigurasiBaru = "{\"parameter1\":\"nilaiBaru1\",\"parameter4\":\"nilaiBaru4\"}";
+ucfg.applySettings(konfigurasiBaru);
+
+10. Mengecek apakah perangkat BLE sudah terkoneksi
+if (ucfg.isDeviceConnected()) {
+    Serial.println("Perangkat terkoneksi.");
+} else {
+    Serial.println("Perangkat tidak terkoneksi.");
+}
+
+------------------------------------------------------------------------------------------
+*/
