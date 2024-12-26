@@ -16,17 +16,24 @@ class DeviceScreenState extends State<DeviceScreen> {
   List<ConfigParameter> configParameters = [];
   BluetoothCharacteristic? targetCharacteristic;
   bool isAuthenticated = false;
-  bool isUpdating = false;
 
   @override
   void initState() {
     super.initState();
     connectToDevice();
-    widget.device.state.listen((state) {
-      if (state == BluetoothDeviceState.disconnected) {
-        setState(() => isAuthenticated = false);
-        showSnackbar("Device disconnected.", Colors.red);
-      }
+  }
+
+  void dispose() {
+    resetState(); // Reset state sebelum disconnect
+    widget.device.disconnect();
+    super.dispose();
+  }
+
+  void resetState() {
+    setState(() {
+      configParameters = [];
+      targetCharacteristic = null;
+      isAuthenticated = false;
     });
   }
 
@@ -36,6 +43,7 @@ class DeviceScreenState extends State<DeviceScreen> {
       promptForPin();
     } catch (e) {
       showSnackbar("Failed to connect to device: $e", Colors.red);
+      resetState(); // Reset state jika gagal koneksi
     }
   }
 
@@ -96,45 +104,56 @@ class DeviceScreenState extends State<DeviceScreen> {
           if (characteristic.properties.read) {
             List<int> value = await characteristic.read();
             String data = String.fromCharCodes(value);
-            if (data.trim().startsWith("[") && data.trim().endsWith("]")) {
-              targetCharacteristic = characteristic;
-              setState(() => configParameters = parseConfig(data));
-              return;
+            print("Received BLE Data: $data");
+
+            // Memastikan data tidak kosong sebelum parsing
+            if (data.isEmpty) {
+              showSnackbar("Received data is empty.", Colors.red);
+              continue; // Lewati iterasi ini
+            }
+
+            // Parsing JSON data
+            try {
+              var parsedData = jsonDecode(data); // Parse JSON string menjadi Map
+              print("Parsed Config Data: $parsedData");
+
+              // Mengubah JSON data menjadi list ConfigParameter
+              List<ConfigParameter> configList = parseConfig(parsedData);
+              setState(() {
+                configParameters = configList;
+                targetCharacteristic = characteristic; // Menyimpan karakteristik untuk menulis data
+              });
+            } catch (e) {
             }
           }
         }
       }
-      showSnackbar("No JSON characteristic found.", Colors.orange);
+      if (configParameters.isEmpty) {
+        showSnackbar("No valid JSON data received.", Colors.orange);
+      }
     } catch (e) {
       showSnackbar("Error discovering services: $e", Colors.red);
     }
   }
-  List<ConfigParameter> parseConfig(String jsonString) {
+  List<ConfigParameter> parseConfig(Map<String, dynamic> jsonData) {
     try {
-      List<dynamic> jsonArray = jsonDecode(jsonString);
-      return jsonArray.map((entry) {
+      if (jsonData.isEmpty) {
+        showSnackbar("Received data is empty.", Colors.red);
+        return [];
+      }
+
+      return jsonData.entries.map((entry) {
         return ConfigParameter(
-          key: entry['key'] ?? '',
-          value: entry['value']?.toString() ?? '',
-          type: entry['type']?.toString() ?? '',
-          desc: entry['description']?.toString() ?? '',
+          key: entry.key,
+          value: entry.value['value'] ?? '',
+          type: entry.value['type'] ?? '',
+          desc: entry.value['description'] ?? '',
         );
       }).toList();
     } catch (e) {
-      showSnackbar("Failed to parse configuration: $e", Colors.red);
+      print("Error parsing JSON: $e");
+      showSnackbar("Error parsing JSON data.", Colors.red);
       return [];
-    }
-  }
-
-
-  bool isValidValue(String value, String type) {
-    switch (type.toLowerCase()) {
-      case 'int':
-        return int.tryParse(value) != null;
-      case 'double':
-        return double.tryParse(value) != null;
-      default:
-        return value.isNotEmpty;
     }
   }
 
@@ -144,31 +163,21 @@ class DeviceScreenState extends State<DeviceScreen> {
     );
   }
 
-  Future<void> updateData() async {
-    setState(() => isUpdating = true);
-    try {
-      String updatedData =
-      jsonEncode(configParameters.map((param) => param.toJson()).toList());
-      await targetCharacteristic?.write(utf8.encode(updatedData));
-      showSnackbar("Data updated successfully.", Colors.green);
-    } catch (e) {
-      showSnackbar("Failed to update data: $e", Colors.red);
-    } finally {
-      setState(() => isUpdating = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Device Configuration"),
+        title: Text("Device Configuration"),
       ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: buildConnectionStatus(),
+            child: Text(
+              widget.device.name,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
           ),
           Expanded(
             child: isAuthenticated
@@ -185,28 +194,18 @@ class DeviceScreenState extends State<DeviceScreen> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: ElevatedButton(
-              onPressed: isUpdating ? null : () => updateData(),
-              child: isUpdating
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text("Update Data"),
+              onPressed: () {
+                if (targetCharacteristic != null) {
+                  updateData();
+                } else {
+                  showSnackbar("No characteristic to update data.", Colors.orange);
+                }
+              },
+              child: const Text("Update Data"),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget buildConnectionStatus() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const Text("Status: ", style: TextStyle(fontSize: 16)),
-        isAuthenticated
-            ? const Text("Connected",
-            style: TextStyle(color: Colors.green, fontSize: 16))
-            : const Text("Disconnected",
-            style: TextStyle(color: Colors.red, fontSize: 16)),
-      ],
     );
   }
 
@@ -217,8 +216,7 @@ class DeviceScreenState extends State<DeviceScreen> {
         itemCount: configParameters.length,
         itemBuilder: (context, index) {
           final param = configParameters[index];
-          TextEditingController controller =
-          TextEditingController(text: param.value);
+          TextEditingController controller = TextEditingController(text: param.value);
 
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -234,8 +232,7 @@ class DeviceScreenState extends State<DeviceScreen> {
                   children: [
                     Text(
                       param.desc,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 18),
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
@@ -249,12 +246,7 @@ class DeviceScreenState extends State<DeviceScreen> {
                         fillColor: Colors.grey[200],
                       ),
                       onChanged: (newValue) {
-                        if (isValidValue(newValue, param.type)) {
-                          param.value = newValue;
-                        } else {
-                          showSnackbar(
-                              "Invalid value for ${param.key}.", Colors.orange);
-                        }
+                        param.value = newValue; // Mengubah nilai parameter
                       },
                     ),
                     const SizedBox(height: 8),
@@ -272,10 +264,23 @@ class DeviceScreenState extends State<DeviceScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    widget.device.disconnect();
-    super.dispose();
+  Future<void> updateData() async {
+    try {
+      Map<String, dynamic> jsonData = {
+        for (var param in configParameters)
+          param.key: {
+            'value': param.value,
+            'type': param.type,
+            'description': param.desc,
+          },
+      };
+      String updatedData = jsonEncode(jsonData);
+      print("Sending updated data: $updatedData");
+      await targetCharacteristic?.write(utf8.encode(updatedData));
+      showSnackbar("Data updated successfully.", Colors.green);
+    } catch (e) {
+      showSnackbar("Failed to update data: $e", Colors.red);
+    }
   }
 }
 

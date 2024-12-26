@@ -78,9 +78,7 @@ void UniversalConfigurator::initBLE(const String& deviceName) {
 void UniversalConfigurator::sendConfig() {
     if (deviceConnected) { // Hanya kirim jika ada perangkat yang terkoneksi
         String configData = getConfigJSON();
-        
         pCharacteristic->setValue(configData.c_str()); // Set nilai Characteristic
-
         pCharacteristic->notify(); // Kirim notifikasi ke client BLE
         Serial.println("Data sent to BLE client:");
         Serial.println(configData); // Cetak data yang dikirim

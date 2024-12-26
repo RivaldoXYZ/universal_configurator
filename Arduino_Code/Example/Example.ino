@@ -3,45 +3,40 @@
 // Deklarasi objek UniversalConfigurator sebagai ucfg
 UniversalConfigurator ucfg; // digunakan untuk mengakses semua fungsi dari Universal Configurator
 void setup() {
-    Serial.begin(115200); // Inisialisasi komunikasi serial dengan baud rate 115200
-    // Menginisialisasi Bluetooth dengan nama perangkat "MyBLEDevice"
+    Serial.begin(115200);
     ucfg.initBLE("Seminar TA 1");
 
-    // Membuat konfigurasi awal dengan parameter default
-    // Parameter: "defauld_param" -> key konfigurasi
-    // Value: "default_value" -> nilai default
-    // Description: "description" -> deskripsi konfigurasi
-    // Type: "string" -> tipe data
+    // Inisialisasi konfigurasi
     ucfg.initConfig("port", "1845", "Port Node Red", "int");
     ucfg.initConfig("ipmqtt", "192.168.1.1", "IP addres MQTT Server", "string");
     ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
     ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
     ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
-    // ucfg.initConfig(const String &param, const String &value, const String &description, const String &type)
-     // Tunggu hingga perangkat BLE terhubung untuk mengirim data sekali
-    Serial.println("Waiting for BLE connection...");
-    while (!ucfg.isDeviceConnected()) {
-        delay(500); // Tunggu hingga perangkat BLE terhubung
-    }
 
-    // Setelah terhubung, kirim konfigurasi
-    Serial.println("Device connected!");
-    String config = ucfg.readFromPreferences("config");
-    String config_1 = ucfg.getConfigJSON();
-    ucfg.sendConfig(); // Kirim data konfigurasi
-    Serial.println("Configuration sent!");
-    Serial.println(config);
+    // Simpan konfigurasi ke Preferences
+    ucfg.saveToPreferences("config", ucfg.getConfigJSON());
 }
 
 void loop() {
-    // Kode di loop tidak melakukan pengiriman konfigurasi lagi
     if (ucfg.isDeviceConnected()) {
-        Serial.println("Device is still connected.");
+        Serial.println("Device is connected!");
+        
+        // Baca konfigurasi dari Preferences
+        String config = ucfg.readFromPreferences("config");
+        if (config.isEmpty()) {
+            Serial.println("Preferences kosong, mengirim konfigurasi default.");
+            ucfg.sendConfig(); // Kirim data default
+        } else {
+            Serial.println("Mengirim konfigurasi dari Preferences.");
+            ucfg.applySettings(config);
+            ucfg.sendConfig(); // Kirim data dari Preferences
+        }
     } else {
         Serial.println("Device is not connected.");
     }
-    delay(1000); // Delay 1 detik untuk menghindari spam log
+    delay(1000);
 }
+
 
 /*
 -------------------- CONTOH IMPLEMENTASI  --------------------
