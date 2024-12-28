@@ -35,7 +35,7 @@ public:
     void clearPreferences(); 
 
     // Fungsi untuk mengambil semua konfigurasi yang ada dalam bentuk JSON
-    String getConfigJSON();  
+    String getConfig();  
     
 public:
     // Mengecek apakah perangkat sudah terkoneksi ke aplikasi via Bluetooth

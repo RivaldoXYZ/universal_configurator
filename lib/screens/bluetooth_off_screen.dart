@@ -7,9 +7,8 @@ import '../utils/snackbar.dart';
 
 class BluetoothOffScreen extends StatelessWidget {
   const BluetoothOffScreen({super.key, this.adapterState});
-
   final BluetoothAdapterState? adapterState;
-
+  
   Widget buildHeader(BuildContext context) {
     return Container(
       height: 100,

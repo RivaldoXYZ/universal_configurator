@@ -15,8 +15,10 @@ class ScanScreen extends StatefulWidget {
 class _ScanScreenState extends State<ScanScreen> {
   List<BluetoothDevice> _systemDevices = [];
   List<ScanResult> _scanResults = [];
-  final List<String> _connectedDevices = []; // Track connected devices
+  final List<String> _connectedDevices = [];
   bool _isScanning = false;
+  bool _isConnecting = false;
+  String _searchQuery = "";
 
   late StreamSubscription<List<ScanResult>> _scanResultsSubscription;
   late StreamSubscription<bool> _isScanningSubscription;
@@ -24,14 +26,13 @@ class _ScanScreenState extends State<ScanScreen> {
   @override
   void initState() {
     super.initState();
-
+    loadConnectedDevices();
     _scanResultsSubscription = FlutterBluePlus.scanResults.listen((results) {
       setState(() {
         _scanResults = results
             .where((result) => !_connectedDevices.contains(result.device.remoteId.str))
-            .toList(); // Filter out connected devices
+            .toList();
       });
-      print("Scan Results: ${_scanResults.length} devices found");
     }, onError: (e) {
       Snackbar.show(ABC.b, "Scan Error: $e", success: false);
     });
@@ -41,18 +42,16 @@ class _ScanScreenState extends State<ScanScreen> {
         _isScanning = state;
       });
     });
-
-    loadConnectedDevices();
   }
 
   Future<void> loadConnectedDevices() async {
     try {
       _systemDevices = await FlutterBluePlus.connectedDevices;
       setState(() {
+        _connectedDevices.clear();
         _connectedDevices.addAll(_systemDevices.map((device) => device.remoteId.str));
       });
     } catch (e) {
-      print("Error loading connected devices: $e");
     }
   }
 
@@ -65,7 +64,6 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> onScanPressed() async {
     try {
-      _systemDevices = await FlutterBluePlus.systemDevices;
       await FlutterBluePlus.startScan(timeout: const Duration(seconds: 5));
     } catch (e) {
       Snackbar.show(ABC.b, "Scan Error: $e", success: false);
@@ -81,21 +79,26 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Future<void> onConnectPressed(BluetoothDevice device) async {
-    if (!await device.isConnected) {
+    setState(() {
+      _isConnecting = true;
+    });
+    if (!device.isConnected) {
       try {
         await device.connect();
         Snackbar.show(ABC.c, "Connect: Success", success: true);
-
         setState(() {
           if (!_connectedDevices.contains(device.remoteId.str)) {
             _connectedDevices.add(device.remoteId.str);
           }
           _scanResults.removeWhere((result) => result.device.remoteId.str == device.remoteId.str);
         });
-
-        await onRefresh();
+        await loadConnectedDevices();
       } catch (e) {
         Snackbar.show(ABC.c, "Connect Error: $e", success: false);
+      } finally {
+        setState(() {
+          _isConnecting = false;
+        });
       }
     }
   }
@@ -113,26 +116,13 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   Future<void> onRefresh() async {
-    try {
-      _systemDevices = await FlutterBluePlus.connectedDevices;
-      setState(() {
-        _connectedDevices
-          ..clear()
-          ..addAll(_systemDevices.map((device) => device.remoteId.str));
-        _scanResults = _scanResults
-            .where((result) => !_connectedDevices.contains(result.device.remoteId.str))
-            .toList(); // Filter out connected devices
-      });
-    } catch (e) {
-      print("Error refreshing devices: $e");
-    }
+    await loadConnectedDevices();
   }
 
   List<Widget> _buildConnectedDeviceTiles() {
     return _systemDevices.map((device) {
       return ListTile(
         title: Text(device.remoteId.str),
-        subtitle: const Text('Connected'),
         tileColor: Colors.green[100],
         onTap: () {
           Navigator.of(context).push(MaterialPageRoute(
@@ -148,11 +138,14 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   List<Widget> _buildScanResultTiles(BuildContext context) {
-    return _scanResults.map((r) {
+    return _scanResults.where((result) {
+      return result.device.platformName.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).map((r) {
       return ScanResultTile(
         result: r,
         onTap: () => onConnectPressed(r.device),
         onDisconnectPressed: () => onDisconnectPressed(r.device),
+        isConnecting: _isConnecting,
       );
     }).toList();
   }
@@ -208,6 +201,17 @@ class _ScanScreenState extends State<ScanScreen> {
         body: Column(
           children: [
             buildHeader(context),
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: TextField(
+                decoration: const InputDecoration(labelText: 'Search Devices'),
+                onChanged: (value) {
+                  setState(() {
+                    _searchQuery = value;
+                  });
+                },
+              ),
+            ),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: onRefresh,

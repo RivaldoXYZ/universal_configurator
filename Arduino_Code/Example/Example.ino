@@ -2,6 +2,7 @@
 
 // Deklarasi objek UniversalConfigurator sebagai ucfg
 UniversalConfigurator ucfg; // digunakan untuk mengakses semua fungsi dari Universal Configurator
+
 void setup() {
     Serial.begin(115200);
     ucfg.initBLE("Seminar TA 1");
@@ -14,29 +15,25 @@ void setup() {
     ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
 
     // Simpan konfigurasi ke Preferences
-    ucfg.saveToPreferences("config", ucfg.getConfigJSON());
+    ucfg.saveToPreferences("config", ucfg.getConfig());
 }
 
 void loop() {
     if (ucfg.isDeviceConnected()) {
         Serial.println("Device is connected!");
-        
-        // Baca konfigurasi dari Preferences
         String config = ucfg.readFromPreferences("config");
         if (config.isEmpty()) {
             Serial.println("Preferences kosong, mengirim konfigurasi default.");
-            ucfg.sendConfig(); // Kirim data default
+            ucfg.sendConfig();
         } else {
             Serial.println("Mengirim konfigurasi dari Preferences.");
-            ucfg.applySettings(config);
-            ucfg.sendConfig(); // Kirim data dari Preferences
+            ucfg.sendConfig();
         }
     } else {
         Serial.println("Device is not connected.");
     }
-    delay(1000);
+    delay(2000);
 }
-
 
 /*
 -------------------- CONTOH IMPLEMENTASI  --------------------
@@ -50,7 +47,7 @@ ucfg.initConfig("parameter2", "123", "Deskripsi Parameter 2", "integer");
 ucfg.initConfig("parameter3", "true", "Deskripsi Parameter 3", "boolean");
 
 3. Mengambil semua konfigurasi yang ada dalam bentuk JSON
-String konfigurasiJSON = ucfg.getConfigJSON();
+String konfigurasiJSON = ucfg.getConfig();
 
 4. Menyimpan data JSON ke Preferences
 String dataBaru = "{\"parameter\":\"nilaiBaru\"}";

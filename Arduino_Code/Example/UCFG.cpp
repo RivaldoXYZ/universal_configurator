@@ -63,7 +63,7 @@ void UniversalConfigurator::initBLE(const String& deviceName) {
     pCharacteristic->addDescriptor(new BLE2902()); // Tambahkan descriptor untuk Notify
 
     // Atur nilai awal Characteristic dengan konfigurasi JSON
-    String initialConfig = getConfigJSON();
+    String initialConfig = getConfig();
     pCharacteristic->setValue(initialConfig.c_str());
 
     pService->start(); // Mulai Service
@@ -77,7 +77,7 @@ void UniversalConfigurator::initBLE(const String& deviceName) {
 
 void UniversalConfigurator::sendConfig() {
     if (deviceConnected) { // Hanya kirim jika ada perangkat yang terkoneksi
-        String configData = getConfigJSON();
+        String configData = getConfig();
         pCharacteristic->setValue(configData.c_str()); // Set nilai Characteristic
         pCharacteristic->notify(); // Kirim notifikasi ke client BLE
         Serial.println("Data sent to BLE client:");
@@ -146,7 +146,7 @@ void UniversalConfigurator::applySettings(const String& jsonData) {
     Serial.println("Applying settings: " + jsonData); // Cetak data yang diterapkan
 }
 
-String UniversalConfigurator::getConfigJSON() {
+String UniversalConfigurator::getConfig() {
     if (pCharacteristic->getValue().length() > 0) {
         String receivedData = pCharacteristic->getValue().c_str(); 
         Serial.println("Received BLE data: " + receivedData);

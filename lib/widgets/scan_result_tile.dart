@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
@@ -9,16 +8,17 @@ class ScanResultTile extends StatefulWidget {
     required this.result,
     this.onTap,
     this.onDisconnectPressed,
+    required this.isConnecting,
   });
 
   final ScanResult result;
   final VoidCallback? onTap;
   final Function? onDisconnectPressed;
+  final bool isConnecting;
 
   @override
   State<ScanResultTile> createState() => _ScanResultTileState();
 }
-
 
 class _ScanResultTileState extends State<ScanResultTile> {
   BluetoothConnectionState _connectionState = BluetoothConnectionState.disconnected;
@@ -92,21 +92,20 @@ class _ScanResultTileState extends State<ScanResultTile> {
         backgroundColor: isConnected ? Colors.red : Colors.black,
         foregroundColor: Colors.white,
       ),
-      onPressed: (widget.result.advertisementData.connectable)
+      onPressed: (widget.result.advertisementData.connectable && !widget.isConnecting)
           ? () {
         if (isConnected) {
-          // Jika terhubung, panggil onDisconnectPressed
           widget.onDisconnectPressed?.call();
         } else {
-          // Jika tidak terhubung, lakukan connect
           widget.onTap!();
         }
       }
           : null,
-      child: Text(isConnected ? 'DISCONNECT' : 'CONNECT'),
+      child: widget.isConnecting
+          ? CircularProgressIndicator()
+          : Text(isConnected ? 'DISCONNECT' : 'CONNECT'),
     );
   }
-
 
   Widget _buildAdvRow(BuildContext context, String title, String value) {
     return Padding(

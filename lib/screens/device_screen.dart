@@ -23,8 +23,9 @@ class DeviceScreenState extends State<DeviceScreen> {
     connectToDevice();
   }
 
+  @override
   void dispose() {
-    resetState(); // Reset state sebelum disconnect
+    resetState();
     widget.device.disconnect();
     super.dispose();
   }
@@ -43,7 +44,7 @@ class DeviceScreenState extends State<DeviceScreen> {
       promptForPin();
     } catch (e) {
       showSnackbar("Failed to connect to device: $e", Colors.red);
-      resetState(); // Reset state jika gagal koneksi
+      resetState();
     }
   }
 
@@ -106,24 +107,21 @@ class DeviceScreenState extends State<DeviceScreen> {
             String data = String.fromCharCodes(value);
             print("Received BLE Data: $data");
 
-            // Memastikan data tidak kosong sebelum parsing
             if (data.isEmpty) {
               showSnackbar("Received data is empty.", Colors.red);
-              continue; // Lewati iterasi ini
+              continue;
             }
-
             // Parsing JSON data
             try {
-              var parsedData = jsonDecode(data); // Parse JSON string menjadi Map
+              var parsedData = jsonDecode(data);
               print("Parsed Config Data: $parsedData");
-
-              // Mengubah JSON data menjadi list ConfigParameter
               List<ConfigParameter> configList = parseConfig(parsedData);
               setState(() {
                 configParameters = configList;
-                targetCharacteristic = characteristic; // Menyimpan karakteristik untuk menulis data
+                targetCharacteristic = characteristic;
               });
             } catch (e) {
+
             }
           }
         }
@@ -135,6 +133,7 @@ class DeviceScreenState extends State<DeviceScreen> {
       showSnackbar("Error discovering services: $e", Colors.red);
     }
   }
+
   List<ConfigParameter> parseConfig(Map<String, dynamic> jsonData) {
     try {
       if (jsonData.isEmpty) {
@@ -167,7 +166,7 @@ class DeviceScreenState extends State<DeviceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Device Configuration"),
+        title: const Text("Device Configuration"),
       ),
       body: Column(
         children: [
@@ -246,7 +245,7 @@ class DeviceScreenState extends State<DeviceScreen> {
                         fillColor: Colors.grey[200],
                       ),
                       onChanged: (newValue) {
-                        param.value = newValue; // Mengubah nilai parameter
+                        param.value = newValue;
                       },
                     ),
                     const SizedBox(height: 8),
@@ -265,6 +264,10 @@ class DeviceScreenState extends State<DeviceScreen> {
   }
 
   Future<void> updateData() async {
+    if (targetCharacteristic == null) {
+      showSnackbar("No characteristic to update data.", Colors.orange);
+      return;
+    }
     try {
       Map<String, dynamic> jsonData = {
         for (var param in configParameters)
@@ -276,7 +279,7 @@ class DeviceScreenState extends State<DeviceScreen> {
       };
       String updatedData = jsonEncode(jsonData);
       print("Sending updated data: $updatedData");
-      await targetCharacteristic?.write(utf8.encode(updatedData));
+      await targetCharacteristic!.write(utf8.encode(updatedData));
       showSnackbar("Data updated successfully.", Colors.green);
     } catch (e) {
       showSnackbar("Failed to update data: $e", Colors.red);
