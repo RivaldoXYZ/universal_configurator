@@ -6,7 +6,7 @@ import 'dart:convert';
 class DeviceScreen extends StatefulWidget {
   final BluetoothDevice device;
 
-  const DeviceScreen({Key? key, required this.device}) : super(key: key);
+  const DeviceScreen({super.key, required this.device});
 
   @override
   DeviceScreenState createState() => DeviceScreenState();
@@ -16,6 +16,7 @@ class DeviceScreenState extends State<DeviceScreen> {
   List<ConfigParameter> configParameters = [];
   BluetoothCharacteristic? targetCharacteristic;
   bool isAuthenticated = false;
+  String? validPin;
 
   @override
   void initState() {
@@ -35,16 +36,61 @@ class DeviceScreenState extends State<DeviceScreen> {
       configParameters = [];
       targetCharacteristic = null;
       isAuthenticated = false;
+      validPin = null;
     });
   }
 
   Future<void> connectToDevice() async {
     try {
       await widget.device.connect();
-      promptForPin();
+      await discoverServicesAndReadData();
     } catch (e) {
       showSnackbar("Failed to connect to device: $e", Colors.red);
       resetState();
+    }
+  }
+
+  Future<void> discoverServicesAndReadData() async {
+    try {
+      List<BluetoothService> services = await widget.device.discoverServices();
+      List<ConfigParameter> configList = [];
+
+      for (var service in services) {
+        for (var characteristic in service.characteristics) {
+          if (characteristic.properties.read) {
+            List<int> value = await characteristic.read();
+            String data = String.fromCharCodes(value);
+
+            if (data.isEmpty) {
+              showSnackbar("Received data is empty.", Colors.red);
+              continue;
+            }
+
+            try {
+              var parsedData = jsonDecode(data);
+              configList = parseConfig(parsedData);
+            } catch (e) {
+              continue;
+            }
+          }
+
+          if (characteristic.properties.write) {
+            targetCharacteristic = characteristic;
+          }
+        }
+      }
+
+      if (configList.isNotEmpty) {
+        setState(() {
+          configParameters = configList;
+          validPin = configList.firstWhere((param) => param.key == "PIN").value;
+        });
+        promptForPin();
+      } else {
+        showSnackbar("No valid JSON data received.", Colors.orange);
+      }
+    } catch (e) {
+      showSnackbar("Error discovering services: $e", Colors.red);
     }
   }
 
@@ -80,10 +126,9 @@ class DeviceScreenState extends State<DeviceScreen> {
             ),
             TextButton(
               onPressed: () {
-                if (pinController.text == "1234") {
+                if (pinController.text == validPin) {
                   setState(() => isAuthenticated = true);
                   Navigator.of(context).pop();
-                  discoverServicesAndReadData();
                 } else {
                   showSnackbar("Invalid PIN. Try again.", Colors.red);
                 }
@@ -94,44 +139,6 @@ class DeviceScreenState extends State<DeviceScreen> {
         );
       },
     );
-  }
-
-  Future<void> discoverServicesAndReadData() async {
-    if (!isAuthenticated) return;
-    try {
-      List<BluetoothService> services = await widget.device.discoverServices();
-      for (var service in services) {
-        for (var characteristic in service.characteristics) {
-          if (characteristic.properties.read) {
-            List<int> value = await characteristic.read();
-            String data = String.fromCharCodes(value);
-            print("Received BLE Data: $data");
-
-            if (data.isEmpty) {
-              showSnackbar("Received data is empty.", Colors.red);
-              continue;
-            }
-            // Parsing JSON data
-            try {
-              var parsedData = jsonDecode(data);
-              print("Parsed Config Data: $parsedData");
-              List<ConfigParameter> configList = parseConfig(parsedData);
-              setState(() {
-                configParameters = configList;
-                targetCharacteristic = characteristic;
-              });
-            } catch (e) {
-
-            }
-          }
-        }
-      }
-      if (configParameters.isEmpty) {
-        showSnackbar("No valid JSON data received.", Colors.orange);
-      }
-    } catch (e) {
-      showSnackbar("Error discovering services: $e", Colors.red);
-    }
   }
 
   List<ConfigParameter> parseConfig(Map<String, dynamic> jsonData) {
@@ -150,7 +157,6 @@ class DeviceScreenState extends State<DeviceScreen> {
         );
       }).toList();
     } catch (e) {
-      print("Error parsing JSON: $e");
       showSnackbar("Error parsing JSON data.", Colors.red);
       return [];
     }
@@ -173,7 +179,7 @@ class DeviceScreenState extends State<DeviceScreen> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Text(
-              widget.device.name,
+              widget.device.platformName,
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
@@ -278,7 +284,6 @@ class DeviceScreenState extends State<DeviceScreen> {
           },
       };
       String updatedData = jsonEncode(jsonData);
-      print("Sending updated data: $updatedData");
       await targetCharacteristic!.write(utf8.encode(updatedData));
       showSnackbar("Data updated successfully.", Colors.green);
     } catch (e) {

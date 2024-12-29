@@ -46,7 +46,7 @@ class _ScanScreenState extends State<ScanScreen> {
 
   Future<void> loadConnectedDevices() async {
     try {
-      _systemDevices = await FlutterBluePlus.connectedDevices;
+      _systemDevices = FlutterBluePlus.connectedDevices;
       setState(() {
         _connectedDevices.clear();
         _connectedDevices.addAll(_systemDevices.map((device) => device.remoteId.str));

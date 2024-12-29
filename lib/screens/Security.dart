@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class AuthenticationPage extends StatefulWidget {
   final Future<bool> Function(String) onPinEntered;
 
-  AuthenticationPage({required this.onPinEntered});
+  const AuthenticationPage({super.key, required this.onPinEntered});
 
   @override
   _AuthenticationPageState createState() => _AuthenticationPageState();

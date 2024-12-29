@@ -102,7 +102,7 @@ class _ScanResultTileState extends State<ScanResultTile> {
       }
           : null,
       child: widget.isConnecting
-          ? CircularProgressIndicator()
+          ? const CircularProgressIndicator()
           : Text(isConnected ? 'DISCONNECT' : 'CONNECT'),
     );
   }

@@ -4,18 +4,19 @@
 UniversalConfigurator ucfg; // digunakan untuk mengakses semua fungsi dari Universal Configurator
 
 void setup() {
-    Serial.begin(115200);
-    ucfg.initBLE("Seminar TA 1");
+  Serial.begin(115200);
+  ucfg.initBLE("Seminar TA 1");
 
-    // Inisialisasi konfigurasi
-    ucfg.initConfig("port", "1845", "Port Node Red", "int");
-    ucfg.initConfig("ipmqtt", "192.168.1.1", "IP addres MQTT Server", "string");
-    ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
-    ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
-    ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
+  // Inisialisasi konfigurasi
+  ucfg.initConfig("PIN", "1234", "PIN untuk autentikasi", "int");
+  ucfg.initConfig("port", "1845", "Port Node Red", "int");
+  ucfg.initConfig("ipmqtt", "192.168.1.1", "IP addres MQTT Server", "string");
+  ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
+  ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
+  ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
 
-    // Simpan konfigurasi ke Preferences
-    ucfg.saveToPreferences("config", ucfg.getConfig());
+  // Simpan konfigurasi ke Preferences
+  ucfg.saveToPreferences("config", ucfg.getConfig());
 }
 
 void loop() {

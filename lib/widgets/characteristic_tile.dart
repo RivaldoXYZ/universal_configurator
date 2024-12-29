@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import "descriptor_tile.dart";
-import "../utils/snackbar.dart";
 
 class CharacteristicTile extends StatelessWidget {
   final BluetoothCharacteristic characteristic;
@@ -10,17 +9,17 @@ class CharacteristicTile extends StatelessWidget {
   final Function(String) onWrite; // Write callback
 
   const CharacteristicTile({
-    Key? key,
+    super.key,
     required this.characteristic,
     required this.descriptorTiles,
     required this.onRead, // Accept read callback
     required this.onWrite, // Accept write callback
-  }) : super(key: key);
+  });
 
   Widget buildReadButton(BuildContext context) {
     return TextButton(
-      child: const Text("Read"),
-      onPressed: onRead, // Call the passed onRead callback
+      onPressed: onRead,
+      child: const Text("Read"), // Call the passed onRead callback
     );
   }
 

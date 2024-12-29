@@ -4,12 +4,12 @@ import '../utils/json_parser.dart';
 class ConfigEditorScreen extends StatelessWidget {
   final List<ConfigParameter> configParameters;
 
-  ConfigEditorScreen({required this.configParameters});
+  const ConfigEditorScreen({super.key, required this.configParameters});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("ESP32 Configurator")),
+      appBar: AppBar(title: const Text("ESP32 Configurator")),
       body: ListView.builder(
         itemCount: configParameters.length,
         itemBuilder: (context, index) {
