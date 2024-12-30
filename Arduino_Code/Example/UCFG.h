@@ -6,7 +6,8 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <Preferences.h>
-#include <Arduino_JSON.h>
+#include <ArduinoJson.h> 
+#include <map>
 
 class UniversalConfigurator {
 public:
@@ -36,6 +37,12 @@ public:
 
     // Fungsi untuk mengambil semua konfigurasi yang ada dalam bentuk JSON
     String getConfig();  
+
+    // Fungsi untuk memisahkan data format JSON dan menyimpannya ke dalam MAP
+    void parseConfig();
+
+    // Funsgi untuk menggambil data dari config map dan menyimpannya ke dalam configMap[param] s
+    String getConfigValue(const String& param);
     
 public:
     // Mengecek apakah perangkat sudah terkoneksi ke aplikasi via Bluetooth
@@ -57,6 +64,8 @@ private: // Bagian untuk inisialisasi Bluetooth dan data internal
 
     // Fungsi untuk membaca atau inisialisasi data JSON dari Preferences
     String readOrInitPreferences(); 
+
+    std::map<String, String> configMap;
 };
 
 // Callback class untuk menangani event BLE seperti koneksi dan diskoneksi

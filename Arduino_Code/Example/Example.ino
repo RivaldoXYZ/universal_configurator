@@ -3,20 +3,47 @@
 // Deklarasi objek UniversalConfigurator sebagai ucfg
 UniversalConfigurator ucfg; // digunakan untuk mengakses semua fungsi dari Universal Configurator
 
+// Deklarasi variabel global untuk setiap parameter
+int PIN;
+int port;
+String ipmqtt;
+String usernamemqtt;
+String passwordmqtt;
+int Threshold;
+
 void setup() {
-  Serial.begin(115200);
-  ucfg.initBLE("Seminar TA 1");
+    Serial.begin(115200);
+    ucfg.initBLE("Seminar TA 1");
 
-  // Inisialisasi konfigurasi
-  ucfg.initConfig("PIN", "1234", "PIN untuk autentikasi", "int");
-  ucfg.initConfig("port", "1845", "Port Node Red", "int");
-  ucfg.initConfig("ipmqtt", "192.168.1.1", "IP addres MQTT Server", "string");
-  ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
-  ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
-  ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
+    // Inisialisasi konfigurasi
+    ucfg.initConfig("PIN", "1234", "PIN untuk autentikasi", "int");
+    ucfg.initConfig("port", "1845", "Port Node Red", "int");
+    ucfg.initConfig("ipmqtt", "192.168.1.1", "IP addres MQTT Server", "string");
+    ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
+    ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
+    ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
 
-  // Simpan konfigurasi ke Preferences
-  ucfg.saveToPreferences("config", ucfg.getConfig());
+    // Simpan konfigurasi ke Preferences
+    ucfg.saveToPreferences("config", ucfg.getConfig());
+
+    // Baca dan pecah JSON dari Preferences
+    ucfg.parseConfig();
+
+    // Assign nilai-nilai ke variabel global
+    PIN = ucfg.getConfigValue("PIN").toInt();
+    port = ucfg.getConfigValue("port").toInt();
+    ipmqtt = ucfg.getConfigValue("ipmqtt");
+    usernamemqtt = ucfg.getConfigValue("usernamemqtt");
+    passwordmqtt = ucfg.getConfigValue("passwordmqtt");
+    Threshold = ucfg.getConfigValue("Threshold").toInt();
+
+    // Cetak nilai-nilai yang telah diambil
+    Serial.print("PIN: "); Serial.println(PIN);
+    Serial.print("port: "); Serial.println(port);
+    Serial.print("ipmqtt: "); Serial.println(ipmqtt);
+    Serial.print("usernamemqtt: "); Serial.println(usernamemqtt);
+    Serial.print("passwordmqtt: "); Serial.println(passwordmqtt);
+    Serial.print("Threshold: "); Serial.println(Threshold);
 }
 
 void loop() {
@@ -27,14 +54,30 @@ void loop() {
             Serial.println("Preferences kosong, mengirim konfigurasi default.");
             ucfg.sendConfig();
         } else {
-            Serial.println("Mengirim konfigurasi dari Preferences.");
             ucfg.sendConfig();
+            
+            // Assign nilai-nilai ke variabel global
+            PIN = ucfg.getConfigValue("PIN").toInt();
+            port = ucfg.getConfigValue("port").toInt();
+            ipmqtt = ucfg.getConfigValue("ipmqtt");
+            usernamemqtt = ucfg.getConfigValue("usernamemqtt");
+            passwordmqtt = ucfg.getConfigValue("passwordmqtt");
+            Threshold = ucfg.getConfigValue("Threshold").toInt();
+
+            // Cetak nilai-nilai yang telah diambil
+            Serial.print("PIN: "); Serial.println(PIN);
+            Serial.print("port: "); Serial.println(port);
+            Serial.print("ipmqtt: "); Serial.println(ipmqtt);
+            Serial.print("usernamemqtt: "); Serial.println(usernamemqtt);
+            Serial.print("passwordmqtt: "); Serial.println(passwordmqtt);
+            Serial.print("Threshold: "); Serial.println(Threshold);
         }
     } else {
         Serial.println("Device is not connected.");
     }
-    delay(2000);
+    delay(3000);
 }
+
 
 /*
 -------------------- CONTOH IMPLEMENTASI  --------------------
