@@ -11,72 +11,58 @@ String usernamemqtt;
 String passwordmqtt;
 int Threshold;
 
-void setup() {
-    Serial.begin(115200);
-    ucfg.initBLE("Seminar TA 1");
-
-    // Inisialisasi konfigurasi
-    ucfg.initConfig("PIN", "1234", "PIN untuk autentikasi", "int");
-    ucfg.initConfig("port", "1845", "Port Node Red", "int");
-    ucfg.initConfig("ipmqtt", "192.168.1.1", "IP addres MQTT Server", "string");
-    ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
-    ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
-    ucfg.initConfig("Threshold", "87", "Threshold sistem pengairan", "int");
-
-    // Simpan konfigurasi ke Preferences
-    ucfg.saveToPreferences("config", ucfg.getConfig());
-
-    // Baca dan pecah JSON dari Preferences
+void Parse(){
     ucfg.parseConfig();
 
-    // Assign nilai-nilai ke variabel global
-    PIN = ucfg.getConfigValue("PIN").toInt();
+    // ucfg.getConfigValue("name of parameter")
     port = ucfg.getConfigValue("port").toInt();
     ipmqtt = ucfg.getConfigValue("ipmqtt");
     usernamemqtt = ucfg.getConfigValue("usernamemqtt");
     passwordmqtt = ucfg.getConfigValue("passwordmqtt");
     Threshold = ucfg.getConfigValue("Threshold").toInt();
 
-    // Cetak nilai-nilai yang telah diambil
-    Serial.print("PIN: "); Serial.println(PIN);
     Serial.print("port: "); Serial.println(port);
     Serial.print("ipmqtt: "); Serial.println(ipmqtt);
     Serial.print("usernamemqtt: "); Serial.println(usernamemqtt);
     Serial.print("passwordmqtt: "); Serial.println(passwordmqtt);
     Serial.print("Threshold: "); Serial.println(Threshold);
+    Serial.println("\n");
+};
+
+void setup() {
+    Serial.begin(115200);
+    ucfg.initBLE("Seminar TA 1");
+
+    // Menghapus preferensi hanya jika perlu
+    ucfg.clearPreferences(); 
+
+    // Inisialisasi konfigurasi, 
+    // Jika tipe int value di konversi ke string String(value dalam int)
+    // ucfg.initConfig("parameter", "value", "Deskripsi Parameter ", "string");
+    // ucfg.initConfig("parameter2", "String(Value2)", "Deskripsi Parameter 2", "int"); // Untuk tipe data integer
+
+    ucfg.initConfig("PIN", String(1234), "PIN untuk autentikasi", "int");
+    ucfg.initConfig("port", String(1845), "Port Node Red", "int");
+    ucfg.initConfig("ipmqtt", "192.168.1.1", "IP address MQTT Server", "string");
+    ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
+    ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
+    ucfg.initConfig("Threshold", String(87), "Threshold sistem pengairan", "int");
+
+    String configData = ucfg.readFromPreferences("config");
+    Serial.println("Configuration loaded: " + configData);
 }
 
 void loop() {
     if (ucfg.isDeviceConnected()) {
         Serial.println("Device is connected!");
-        String config = ucfg.readFromPreferences("config");
-        if (config.isEmpty()) {
-            Serial.println("Preferences kosong, mengirim konfigurasi default.");
-            ucfg.sendConfig();
-        } else {
-            ucfg.sendConfig();
-            
-            // Assign nilai-nilai ke variabel global
-            PIN = ucfg.getConfigValue("PIN").toInt();
-            port = ucfg.getConfigValue("port").toInt();
-            ipmqtt = ucfg.getConfigValue("ipmqtt");
-            usernamemqtt = ucfg.getConfigValue("usernamemqtt");
-            passwordmqtt = ucfg.getConfigValue("passwordmqtt");
-            Threshold = ucfg.getConfigValue("Threshold").toInt();
-
-            // Cetak nilai-nilai yang telah diambil
-            Serial.print("PIN: "); Serial.println(PIN);
-            Serial.print("port: "); Serial.println(port);
-            Serial.print("ipmqtt: "); Serial.println(ipmqtt);
-            Serial.print("usernamemqtt: "); Serial.println(usernamemqtt);
-            Serial.print("passwordmqtt: "); Serial.println(passwordmqtt);
-            Serial.print("Threshold: "); Serial.println(Threshold);
-        }
+        ucfg.sendConfig();
+        Parse();
     } else {
         Serial.println("Device is not connected.");
     }
     delay(3000);
 }
+
 
 
 /*

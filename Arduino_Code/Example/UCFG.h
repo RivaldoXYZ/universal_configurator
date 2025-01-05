@@ -6,7 +6,8 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 #include <Preferences.h>
-#include <ArduinoJson.h> 
+#include <ArduinoJson.h>
+#include <Arduino_JSON.h>
 #include <map>
 
 class UniversalConfigurator {
@@ -22,9 +23,6 @@ public:
 
     // Fungsi untuk membaca data konfigurasi yang sudah disimpan di Preferences
     String readFromPreferences(const String& key); 
-
-    // Fungsi untuk menerapkan pengaturan dari data konfigurasi berbentuk JSON
-    void applySettings(const String& jsonData); 
 
     // Fungsi untuk membuat UUID secara acak atau mengambil yang sudah ada dari Preferences
     String getOrCreateUUID(const String& key); 
@@ -43,6 +41,7 @@ public:
 
     // Funsgi untuk menggambil data dari config map dan menyimpannya ke dalam configMap[param] s
     String getConfigValue(const String& param);
+
     
 public:
     // Mengecek apakah perangkat sudah terkoneksi ke aplikasi via Bluetooth

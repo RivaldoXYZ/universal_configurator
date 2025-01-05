@@ -99,27 +99,28 @@ String UniversalConfigurator::readOrInitPreferences() {
     }
     return jsonData;
 }
-
 void UniversalConfigurator::initConfig(const String& param, const String& value, const String& description, const String& type) {
     String jsonData = readOrInitPreferences();
-    DynamicJsonDocument doc(1024);
-    DeserializationError error = deserializeJson(doc, jsonData);
-    if (error) {
-        Serial.print("deserializeJson() failed: ");
-        Serial.println(error.c_str());
-        return;
+    JSONVar jsonConfig = JSON.parse(jsonData);
+
+    if (JSON.typeof(jsonConfig) != "undefined") {
+        if (jsonConfig.hasOwnProperty(param)) { // Kalau parameter sudah ada, update
+            jsonConfig[param]["value"] = value;
+            jsonConfig[param]["description"] = description;
+            jsonConfig[param]["type"] = type;
+        } else { // Kalau belum ada, tambahkan parameter baru
+            JSONVar newParam;
+            newParam["value"] = value;
+            newParam["description"] = description;
+            newParam["type"] = type;
+            jsonConfig[param] = newParam;
+        }
+        saveToPreferences("config", JSON.stringify(jsonConfig));
+        Serial.println("Configuration updated:");
+        Serial.println(JSON.stringify(jsonConfig));
+    } else {
+        Serial.println("Error: Failed to parse JSON!");
     }
-
-    JsonObject paramObj = doc[param];
-    paramObj["value"] = value;
-    paramObj["description"] = description;
-    paramObj["type"] = type;
-
-    String output;
-    serializeJson(doc, output);
-    saveToPreferences("config", output);
-    // Serial.println("Configuration updated:");
-    // Serial.println(output);
 }
 
 void UniversalConfigurator::clearPreferences() {
@@ -147,31 +148,28 @@ String UniversalConfigurator::getConfig() {
     return readFromPreferences("config");
 }
 
-void UniversalConfigurator::parseConfig() {
-    String config = readFromPreferences("config");
-    if (config.isEmpty()) {
-        Serial.println("Preferences kosong, tidak ada konfigurasi untuk diparse.");
-        return;
-    }
+  void UniversalConfigurator::parseConfig() {
+      String config = readFromPreferences("config");
+      if (config.isEmpty()) {
+          Serial.println("Preferences kosong, tidak ada konfigurasi untuk diparse.");
+          return;
+      }
 
-    const size_t capacity = JSON_OBJECT_SIZE(6) + 150;
-    DynamicJsonDocument doc(capacity);
+      DynamicJsonDocument doc(config.length() * 2);
 
-    DeserializationError error = deserializeJson(doc, config);
-    if (error) {
-        Serial.print("deserializeJson() failed: ");
-        Serial.println(error.c_str());
-        return;
-    }
+      DeserializationError error = deserializeJson(doc, config);
+      if (error) {
+          Serial.print("deserializeJson() failed: ");
+          Serial.println(error.c_str());
+          return;
+      }
 
-    // Simpan nilai-nilai ke dalam map
-    for (JsonPair kv : doc.as<JsonObject>()) {
-        String key = kv.key().c_str();
-        String value = kv.value()["value"].as<String>();
-        configMap[key] = value;
-        Serial.print(key + ": "); Serial.println(value);
-    }
-}
+      for (JsonPair kv : doc.as<JsonObject>()) {
+          String key = kv.key().c_str();
+          String value = kv.value()["value"].as<String>();
+          configMap[key] = value;
+      }
+  }
 
 String UniversalConfigurator::getConfigValue(const String& param) {
     if (configMap.find(param) != configMap.end()) {

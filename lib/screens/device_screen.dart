@@ -14,43 +14,48 @@ class DeviceScreen extends StatefulWidget {
 
 class DeviceScreenState extends State<DeviceScreen> {
   List<ConfigParameter> configParameters = [];
+  Map<String, String> originalValues = {};
   BluetoothCharacteristic? targetCharacteristic;
   bool isAuthenticated = false;
-  String? validPin;
+  String validPin = '';
+  int _connectionAttempts = 0;
+  static const int maxConnectionAttempts = 3;
+  bool _isConnecting = false;
 
   @override
   void initState() {
     super.initState();
-    connectToDevice();
+    _connectToDevice();
   }
 
   @override
   void dispose() {
-    resetState();
-    widget.device.disconnect();
+    _disconnectDevice();
     super.dispose();
   }
 
-  void resetState() {
-    setState(() {
-      configParameters = [];
-      targetCharacteristic = null;
-      isAuthenticated = false;
-      validPin = null;
-    });
-  }
+  Future<void> _connectToDevice() async {
+    if (_connectionAttempts >= maxConnectionAttempts) {
+      _showErrorDialog("Max connection attempts reached");
+      return;
+    }
 
-  Future<void> connectToDevice() async {
+    setState(() {
+      _isConnecting = true;
+      _connectionAttempts++;
+    });
+
     try {
-      await widget.device.connect();
-      await discoverServicesAndReadData();
+      await widget.device.connect(autoConnect: false, timeout: const Duration(seconds: 10));
+      await _discoverServicesAndReadData();
     } catch (e) {
-      showSnackbar("Failed to connect to device: $e", Colors.red);
-      resetState();
+      _showErrorDialog("Connection failed: ${e.toString()}");
+    } finally {
+      setState(() => _isConnecting = false);
     }
   }
 
-  Future<void> discoverServicesAndReadData() async {
+  Future<void> _discoverServicesAndReadData() async {
     try {
       List<BluetoothService> services = await widget.device.discoverServices();
       List<ConfigParameter> configList = [];
@@ -58,17 +63,14 @@ class DeviceScreenState extends State<DeviceScreen> {
       for (var service in services) {
         for (var characteristic in service.characteristics) {
           if (characteristic.properties.read) {
-            List<int> value = await characteristic.read();
-            String data = String.fromCharCodes(value);
-
-            if (data.isEmpty) {
-              showSnackbar("Received data is empty.", Colors.red);
-              continue;
-            }
-
             try {
+              List<int> value = await characteristic.read();
+              String data = String.fromCharCodes(value);
+
+              if (data.isEmpty) continue;
+
               var parsedData = jsonDecode(data);
-              configList = parseConfig(parsedData);
+              configList = _parseConfig(parsedData);
             } catch (e) {
               continue;
             }
@@ -84,67 +86,53 @@ class DeviceScreenState extends State<DeviceScreen> {
         setState(() {
           configParameters = configList;
           validPin = configList.firstWhere((param) => param.key == "PIN").value;
+
+          originalValues = {
+            for (var param in configParameters) param.key: param.value,
+          };
         });
-        promptForPin();
+        _promptForPin();
       } else {
-        showSnackbar("No valid JSON data received.", Colors.orange);
+        _showSnackbar("No valid JSON data received.", Colors.orange);
       }
     } catch (e) {
-      showSnackbar("Error discovering services: $e", Colors.red);
+      _showSnackbar("Error discovering services: $e", Colors.red);
     }
   }
 
-  Future<void> promptForPin() async {
+
+
+  Future<void> _promptForPin() async {
     TextEditingController pinController = TextEditingController();
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text("Enter PIN"),
-          content: TextField(
-            controller: pinController,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            maxLength: 4,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: "PIN",
-              hintText: "Enter a 4-digit PIN",
-              counterText: "",
-              border: OutlineInputBorder(),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                widget.device.disconnect();
-                Navigator.of(context).pop();
-              },
-              child: const Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                if (pinController.text == validPin) {
-                  setState(() => isAuthenticated = true);
-                  Navigator.of(context).pop();
-                } else {
-                  showSnackbar("Invalid PIN. Try again.", Colors.red);
-                }
-              },
-              child: const Text("OK"),
-            ),
-          ],
-        );
+    await _showInputDialog(
+      title: "Enter PIN",
+      content: TextField(
+        controller: pinController,
+        obscureText: true,
+        keyboardType: TextInputType.number,
+        maxLength: 4,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: const InputDecoration(
+          labelText: "PIN",
+          hintText: "Enter a 4-digit PIN",
+          counterText: "",
+          border: OutlineInputBorder(),
+        ),
+      ),
+      onConfirm: () {
+        if (pinController.text == validPin) {
+          setState(() => isAuthenticated = true);
+        } else {
+          _showSnackbar("Invalid PIN. Try again.", Colors.red);
+        }
       },
     );
   }
 
-  List<ConfigParameter> parseConfig(Map<String, dynamic> jsonData) {
+  List<ConfigParameter> _parseConfig(Map<String, dynamic> jsonData) {
     try {
       if (jsonData.isEmpty) {
-        showSnackbar("Received data is empty.", Colors.red);
+        _showSnackbar("Received data is empty.", Colors.red);
         return [];
       }
 
@@ -157,138 +145,152 @@ class DeviceScreenState extends State<DeviceScreen> {
         );
       }).toList();
     } catch (e) {
-      showSnackbar("Error parsing JSON data.", Colors.red);
+      _showSnackbar("Error parsing JSON data.", Colors.red);
       return [];
     }
   }
 
-  void showSnackbar(String message, Color color) {
+  Future<void> updateData() async {
+    if (targetCharacteristic == null) {
+      _showSnackbar("No characteristic to update data.", Colors.orange);
+      return;
+    }
+
+    Map<String, dynamic> jsonData = {};
+
+    for (var param in configParameters) {
+      jsonData[param.key] = {
+        'value': param.value,
+        'type': param.type,
+        'description': param.desc,
+      };
+    }
+
+    try {
+      String updatedData = jsonEncode(jsonData);
+      List<int> dataBytes = utf8.encode(updatedData);
+      await targetCharacteristic!.write(dataBytes);
+
+      _showSnackbar("Data updated successfully.", Colors.green);
+
+      setState(() {
+        originalValues = {
+          for (var param in configParameters) param.key: param.value,
+        };
+      });
+    } catch (e) {
+      _showSnackbar("Failed to update data: $e", Colors.red);
+    }
+  }
+
+
+  Future<void> _showInputDialog({
+    required String title,
+    required Widget content,
+    required VoidCallback onConfirm,
+  }) async {
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(title),
+          content: content,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () {
+                onConfirm();
+                Navigator.of(context).pop();
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSnackbar(String message, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), backgroundColor: color),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text("Device Configuration"),
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Text(
-              widget.device.platformName,
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          Expanded(
-            child: isAuthenticated
-                ? (configParameters.isNotEmpty
-                ? buildConfigForm()
-                : const Center(child: CircularProgressIndicator()))
-                : const Center(
-              child: Text(
-                "Authenticate to access data",
-                style: TextStyle(fontSize: 18),
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ElevatedButton(
-              onPressed: () {
-                if (targetCharacteristic != null) {
-                  updateData();
-                } else {
-                  showSnackbar("No characteristic to update data.", Colors.orange);
-                }
-              },
-              child: const Text("Update Data"),
-            ),
+  Future<void> _disconnectDevice() async {
+    try {
+      await widget.device.disconnect();
+    } catch (_) {}
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Error"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop();
+            },
+            child: const Text("OK"),
           ),
         ],
       ),
     );
   }
 
-  Widget buildConfigForm() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12.0),
-      child: ListView.builder(
-        itemCount: configParameters.length,
-        itemBuilder: (context, index) {
-          final param = configParameters[index];
-          TextEditingController controller = TextEditingController(text: param.value);
-
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8.0),
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      param.desc,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: controller,
-                      decoration: InputDecoration(
-                        labelText: 'Value',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        filled: true,
-                        fillColor: Colors.grey[200],
-                      ),
-                      onChanged: (newValue) {
-                        param.value = newValue;
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Data Type: ${param.type}",
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text("Device Configuration")),
+      body: isAuthenticated
+          ? (configParameters.isNotEmpty
+          ? buildConfigForm()
+          : const Center(child: CircularProgressIndicator()))
+          : const Center(child: Text("Authenticate to access data")),
+      floatingActionButton: targetCharacteristic != null
+          ? FloatingActionButton(
+        onPressed: updateData,
+        child: const Icon(Icons.save),
+      )
+          : null,
     );
   }
 
-  Future<void> updateData() async {
-    if (targetCharacteristic == null) {
-      showSnackbar("No characteristic to update data.", Colors.orange);
-      return;
-    }
-    try {
-      Map<String, dynamic> jsonData = {
-        for (var param in configParameters)
-          param.key: {
-            'value': param.value,
-            'type': param.type,
-            'description': param.desc,
-          },
-      };
-      String updatedData = jsonEncode(jsonData);
-      await targetCharacteristic!.write(utf8.encode(updatedData));
-      showSnackbar("Data updated successfully.", Colors.green);
-    } catch (e) {
-      showSnackbar("Failed to update data: $e", Colors.red);
-    }
+  Widget buildConfigForm() {
+    return ListView.builder(
+      itemCount: configParameters.length,
+      itemBuilder: (context, index) {
+        final param = configParameters[index];
+        TextEditingController textController =
+        TextEditingController(text: param.value);
+        return ListTile(
+          title: Text(param.desc),
+          subtitle: Text("Value: ${param.value} (Type: ${param.type})"),
+          onTap: () => _showInputDialog(
+            title: "Edit ${param.desc}",
+            content: TextField(
+              controller: textController,
+              decoration: const InputDecoration(
+                labelText: "Value",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            onConfirm: () {
+              setState(() {
+                param.value = textController.text;
+                originalValues[param.key] = param.value;
+              });
+            },
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -304,22 +306,4 @@ class ConfigParameter {
     required this.type,
     required this.desc,
   });
-
-  factory ConfigParameter.fromJson(Map<String, dynamic> json) {
-    return ConfigParameter(
-      key: json['key'] ?? '',
-      value: json['value'] ?? '',
-      type: json['type'] ?? '',
-      desc: json['description'] ?? '',
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'key': key,
-      'value': value,
-      'type': type,
-      'description': desc,
-    };
-  }
 }
