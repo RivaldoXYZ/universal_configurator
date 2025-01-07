@@ -41,12 +41,13 @@ void setup() {
     // ucfg.initConfig("parameter", "value", "Deskripsi Parameter ", "string");
     // ucfg.initConfig("parameter2", "String(Value2)", "Deskripsi Parameter 2", "int"); // Untuk tipe data integer
 
-    ucfg.initConfig("PIN", String(1234), "PIN untuk autentikasi", "int");
-    ucfg.initConfig("port", String(1845), "Port Node Red", "int");
+    ucfg.initConfig("PIN", String(1234), "PIN untuk autentikasi", "int"); // WAJIB Untuk deklarasi PIN 
+
+    // ucfg.initConfig("port", String(1845), "Port Node Red", "int");
     ucfg.initConfig("ipmqtt", "192.168.1.1", "IP address MQTT Server", "string");
     ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
     ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
-    ucfg.initConfig("Threshold", String(87), "Threshold sistem pengairan", "int");
+    ucfg.initConfig("Threshold", String(88), "Threshold sistem pengairan", "int");
 
     String configData = ucfg.readFromPreferences("config");
     Serial.println("Configuration loaded: " + configData);

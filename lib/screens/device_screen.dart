@@ -57,6 +57,12 @@ class DeviceScreenState extends State<DeviceScreen> {
 
   Future<void> _discoverServicesAndReadData() async {
     try {
+      setState(() {
+        configParameters.clear();
+        originalValues.clear();
+        isAuthenticated = false;
+      });
+
       List<BluetoothService> services = await widget.device.discoverServices();
       List<ConfigParameter> configList = [];
 
@@ -85,13 +91,20 @@ class DeviceScreenState extends State<DeviceScreen> {
       if (configList.isNotEmpty) {
         setState(() {
           configParameters = configList;
-          validPin = configList.firstWhere((param) => param.key == "PIN").value;
-
           originalValues = {
-            for (var param in configParameters) param.key: param.value,
+            for (var param in configList) param.key: param.value,
           };
         });
-        _promptForPin();
+
+        ConfigParameter pinParam;
+        try {
+          pinParam = configList.firstWhere((param) => param.key == "PIN");
+          validPin = pinParam.value;
+          await _promptForPin();
+        } catch (e) {
+          setState(() => isAuthenticated = true);
+          _showSnackbar("PIN not required. Access granted.", Colors.green);
+        }
       } else {
         _showSnackbar("No valid JSON data received.", Colors.orange);
       }
@@ -99,7 +112,6 @@ class DeviceScreenState extends State<DeviceScreen> {
       _showSnackbar("Error discovering services: $e", Colors.red);
     }
   }
-
 
 
   Future<void> _promptForPin() async {
@@ -155,7 +167,6 @@ class DeviceScreenState extends State<DeviceScreen> {
       _showSnackbar("No characteristic to update data.", Colors.orange);
       return;
     }
-
     Map<String, dynamic> jsonData = {};
 
     for (var param in configParameters) {
@@ -172,6 +183,8 @@ class DeviceScreenState extends State<DeviceScreen> {
       await targetCharacteristic!.write(dataBytes);
 
       _showSnackbar("Data updated successfully.", Colors.green);
+
+      await _discoverServicesAndReadData();
 
       setState(() {
         originalValues = {
@@ -223,7 +236,14 @@ class DeviceScreenState extends State<DeviceScreen> {
     try {
       await widget.device.disconnect();
     } catch (_) {}
+    setState(() {
+      configParameters = [];
+      originalValues = {};
+      isAuthenticated = false;
+      targetCharacteristic = null;
+    });
   }
+
 
   void _showErrorDialog(String message) {
     showDialog(
@@ -248,7 +268,9 @@ class DeviceScreenState extends State<DeviceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Device Configuration")),
-      body: isAuthenticated
+      body: _isConnecting
+          ? const Center(child: CircularProgressIndicator())
+          : isAuthenticated
           ? (configParameters.isNotEmpty
           ? buildConfigForm()
           : const Center(child: CircularProgressIndicator()))
@@ -267,8 +289,14 @@ class DeviceScreenState extends State<DeviceScreen> {
       itemCount: configParameters.length,
       itemBuilder: (context, index) {
         final param = configParameters[index];
-        TextEditingController textController =
-        TextEditingController(text: param.value);
+        TextEditingController textController = TextEditingController(text: param.value);
+
+        TextInputType inputType = param.type == "int" ? TextInputType.number : TextInputType.text;
+
+        if (param.key == "PIN" && param.value.length > 4) {
+          textController = TextEditingController(text: param.value.substring(0, 4));
+        }
+
         return ListTile(
           title: Text(param.desc),
           subtitle: Text("Value: ${param.value} (Type: ${param.type})"),
@@ -280,10 +308,20 @@ class DeviceScreenState extends State<DeviceScreen> {
                 labelText: "Value",
                 border: OutlineInputBorder(),
               ),
+              keyboardType: inputType,
+              inputFormatters: [
+                if (param.type == "int") FilteringTextInputFormatter.digitsOnly,
+                if (param.key == "PIN") FilteringTextInputFormatter.digitsOnly,
+              ],
+              maxLength: param.key == "PIN" ? 4 : null,
             ),
             onConfirm: () {
               setState(() {
-                param.value = textController.text;
+                if (param.key == "PIN" && textController.text.length > 4) {
+                  param.value = textController.text.substring(0, 4);
+                } else {
+                  param.value = textController.text;
+                }
                 originalValues[param.key] = param.value;
               });
             },

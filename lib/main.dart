@@ -9,6 +9,7 @@ import 'screens/scan_screen.dart';
 void main() {
   FlutterBluePlus.setLogLevel(LogLevel.verbose, color: true);
   runApp(const ConfiguratorApp());
+
 }
 
 class ConfiguratorApp extends StatefulWidget {
