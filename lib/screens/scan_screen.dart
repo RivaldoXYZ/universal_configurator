@@ -5,6 +5,7 @@
   import '../utils/snackbar.dart';
   import '../widgets/scan_result_tile.dart';
 
+
   class ScanScreen extends StatefulWidget {
     const ScanScreen({super.key});
 
@@ -17,8 +18,11 @@
     List<ScanResult> _scanResults = [];
     final List<String> _connectedDevices = [];
     bool _isScanning = false;
-    bool _isConnecting = false;
+    final bool _isConnecting = false;
     String _searchQuery = "";
+
+    final Map<String, bool> _deviceConnectingStatus = {};
+
 
     late StreamSubscription<List<ScanResult>> _scanResultsSubscription;
     late StreamSubscription<bool> _isScanningSubscription;
@@ -52,8 +56,10 @@
           _connectedDevices.addAll(_systemDevices.map((device) => device.remoteId.str));
         });
       } catch (e) {
+        Snackbar.show(ABC.b, "Error loading connected devices: $e", success: false);
       }
     }
+
 
     @override
     void dispose() {
@@ -80,28 +86,28 @@
 
     Future<void> onConnectPressed(BluetoothDevice device) async {
       setState(() {
-        _isConnecting = true;
+        _deviceConnectingStatus[device.remoteId.str] = true;
       });
-      if (!device.isConnected) {
-        try {
-          await device.connect();
-          Snackbar.show(ABC.c, "Connect: Success", success: true);
-          setState(() {
-            if (!_connectedDevices.contains(device.remoteId.str)) {
-              _connectedDevices.add(device.remoteId.str);
-            }
-            _scanResults.removeWhere((result) => result.device.remoteId.str == device.remoteId.str);
-          });
-          await loadConnectedDevices();
-        } catch (e) {
-          Snackbar.show(ABC.c, "Connect Error: $e", success: false);
-        } finally {
-          setState(() {
-            _isConnecting = false;
-          });
-        }
+
+      try {
+        await device.connect();
+        Snackbar.show(ABC.c, "Connect: Success", success: true);
+        setState(() {
+          if (!_connectedDevices.contains(device.remoteId.str)) {
+            _connectedDevices.add(device.remoteId.str);
+          }
+          _scanResults.removeWhere((result) => result.device.remoteId.str == device.remoteId.str);
+        });
+        await loadConnectedDevices();
+      } catch (e) {
+        Snackbar.show(ABC.c, "Connect Error: $e", success: false);
+      } finally {
+        setState(() {
+          _deviceConnectingStatus[device.remoteId.str] = false;
+        });
       }
     }
+
 
     Future<void> onDisconnectPressed(BluetoothDevice device) async {
       try {
@@ -110,10 +116,15 @@
           _connectedDevices.removeWhere((id) => id == device.remoteId.str);
         });
         Snackbar.show(ABC.b, "Disconnected from ${device.remoteId.str}", success: true);
+
+        await loadConnectedDevices();
+
+        await onScanPressed();
       } catch (e) {
         Snackbar.show(ABC.c, "Disconnect Error: $e", success: false);
       }
     }
+
 
     Future<void> onRefresh() async {
       await loadConnectedDevices();
@@ -121,17 +132,52 @@
 
     List<Widget> _buildConnectedDeviceTiles() {
       return _systemDevices.map((device) {
+        String deviceName = device.platformName.isNotEmpty ? device.platformName : "Unnamed Device";
+
         return ListTile(
-          title: Text(device.remoteId.str),
+          title: Text(deviceName),
+          subtitle: Text(device.remoteId.toString()),
           tileColor: Colors.green[100],
-          onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(
-              builder: (context) => DeviceScreen(device: device),
-            ));
-          },
-          trailing: ElevatedButton(
-            onPressed: () => onDisconnectPressed(device),
-            child: const Text('DISCONNECT'),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (context) => DeviceScreen(device: device),
+                  ));
+                },
+                icon: const Icon(
+                  Icons.settings,
+                  color: Colors.white,
+                ),
+                label: const Text(''),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue [400],
+                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              ElevatedButton.icon(
+                onPressed: () => onDisconnectPressed(device),
+                icon: const Icon(
+                  Icons.bluetooth_disabled,
+                  color: Colors.white,
+                ),
+                label: const Text(''),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red [400],
+                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       }).toList();
@@ -145,22 +191,24 @@
           result: r,
           onTap: () => onConnectPressed(r.device),
           onDisconnectPressed: () => onDisconnectPressed(r.device),
-          isConnecting: _isConnecting,
+          isConnecting: _isConnecting || (_deviceConnectingStatus[r.device.remoteId.str] ?? false),
         );
       }).toList();
     }
+
+
 
     Widget buildScanButton(BuildContext context) {
       return FloatingActionButton(
         onPressed: _isScanning ? onStopPressed : onScanPressed,
         backgroundColor: _isScanning ? Colors.red : Colors.blue,
         child: _isScanning
-            ? SizedBox(
+            ? const SizedBox(
           width: 23.0,
           height: 23.0,
           child: CircularProgressIndicator(color: Colors.white),
         )
-            : Icon(Icons.search),
+            : const Icon(Icons.search),
       );
     }
 
@@ -222,14 +270,14 @@
                 child: ListView(
                   children: [
                     if (_systemDevices.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
+                      const Padding(
+                        padding: EdgeInsets.all(8.0),
                         child: Text('Connected Devices', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ..._buildConnectedDeviceTiles(),
                     if (_scanResults.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(8.0),
+                      const Padding(
+                        padding: EdgeInsets.all(8.0),
                         child: Text('Available Devices', style: TextStyle(fontWeight: FontWeight.bold)),
                       ),
                     ..._buildScanResultTiles(context),

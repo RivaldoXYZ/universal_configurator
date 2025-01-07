@@ -20,6 +20,7 @@ class ScanResultTile extends StatefulWidget {
   State<ScanResultTile> createState() => _ScanResultTileState();
 }
 
+
 class _ScanResultTileState extends State<ScanResultTile> {
   BluetoothConnectionState _connectionState = BluetoothConnectionState.disconnected;
 
@@ -102,10 +103,26 @@ class _ScanResultTileState extends State<ScanResultTile> {
       }
           : null,
       child: widget.isConnecting
-          ? const CircularProgressIndicator()
-          : Text(isConnected ? 'DISCONNECT' : 'CONNECT'),
+          ? const SizedBox(
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(
+          strokeWidth: 3,
+          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      )
+          : Icon(
+        isConnected ? Icons.bluetooth_disabled : Icons.bluetooth,
+        size: 20,
+        color: isConnected ? Colors.white : Colors.white,  // Change color here
+      ),
     );
   }
+
+
+
+
+
 
   Widget _buildAdvRow(BuildContext context, String title, String value) {
     return Padding(
