@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
+import 'dart:core';
 
 class DeviceScreen extends StatefulWidget {
   final BluetoothDevice device;
@@ -21,6 +22,20 @@ class DeviceScreenState extends State<DeviceScreen> {
   int _connectionAttempts = 0;
   static const int maxConnectionAttempts = 3;
   bool _isConnecting = false;
+  bool _isValidIp(String ip) {
+    const ipPattern = r'^([0-9]{1,3}\.){3}[0-9]{1,3}$';
+    final regex = RegExp(ipPattern);
+
+    if (!regex.hasMatch(ip)) return false;
+    List<String> octets = ip.split('.');
+    for (var octet in octets) {
+      int? num = int.tryParse(octet);
+      if (num == null || num < 0 || num > 255) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   @override
   void initState() {
@@ -255,7 +270,6 @@ class DeviceScreenState extends State<DeviceScreen> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              Navigator.of(context).pop();
             },
             child: const Text("OK"),
           ),
@@ -276,9 +290,10 @@ class DeviceScreenState extends State<DeviceScreen> {
           : const Center(child: CircularProgressIndicator()))
           : const Center(child: Text("Authenticate to access data")),
       floatingActionButton: targetCharacteristic != null
-          ? FloatingActionButton(
+          ? FloatingActionButton.extended(
         onPressed: updateData,
-        child: const Icon(Icons.save),
+        label: const Text('Save'),
+        icon: const Icon(Icons.save),
       )
           : null,
     );
@@ -291,7 +306,7 @@ class DeviceScreenState extends State<DeviceScreen> {
         final param = configParameters[index];
         TextEditingController textController = TextEditingController(text: param.value);
 
-        TextInputType inputType = param.type == "int" ? TextInputType.number : TextInputType.text;
+        TextInputType inputType = TextInputType.text;
 
         if (param.key == "PIN" && param.value.length > 4) {
           textController = TextEditingController(text: param.value.substring(0, 4));
@@ -309,18 +324,34 @@ class DeviceScreenState extends State<DeviceScreen> {
                 border: OutlineInputBorder(),
               ),
               keyboardType: inputType,
-              inputFormatters: [
-                if (param.type == "int") FilteringTextInputFormatter.digitsOnly,
-                if (param.key == "PIN") FilteringTextInputFormatter.digitsOnly,
-              ],
+              inputFormatters: const [],
               maxLength: param.key == "PIN" ? 4 : null,
             ),
             onConfirm: () {
               setState(() {
-                if (param.key == "PIN" && textController.text.length > 4) {
-                  param.value = textController.text.substring(0, 4);
+                String newValue = textController.text;
+
+                if (param.type == "int") {
+                  if (int.tryParse(newValue) == null) {
+                    _showSnackbar("The input is not a valid integer. Please enter a valid integer.", Colors.red);
+                    return;
+                  }
+                } else if (param.type == "float" || param.type == "double") {
+                  if (double.tryParse(newValue) == null || !newValue.contains('.')) {
+                    _showSnackbar("The input is not a valid number. Please enter a valid decimal number.", Colors.red);
+                    return;
+                  }
+                } else if (param.type == "ip") {
+                  if (!_isValidIp(newValue)) {
+                    _showSnackbar("The input is not a valid IP address. Please enter a valid IPv4 address (0-255 for each octet).", Colors.red);
+                    return;
+                  }
+                }
+
+                if (param.key == "PIN" && newValue.length > 4) {
+                  param.value = newValue.substring(0, 4);
                 } else {
-                  param.value = textController.text;
+                  param.value = newValue;
                 }
                 originalValues[param.key] = param.value;
               });
@@ -331,6 +362,7 @@ class DeviceScreenState extends State<DeviceScreen> {
     );
   }
 }
+
 
 class ConfigParameter {
   String key;

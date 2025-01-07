@@ -13,13 +13,13 @@ int Threshold;
 
 void Parse(){
     ucfg.parseConfig();
-
+    
     // ucfg.getConfigValue("name of parameter")
     port = ucfg.getConfigValue("port").toInt();
     ipmqtt = ucfg.getConfigValue("ipmqtt");
     usernamemqtt = ucfg.getConfigValue("usernamemqtt");
     passwordmqtt = ucfg.getConfigValue("passwordmqtt");
-    Threshold = ucfg.getConfigValue("Threshold").toInt();
+    Threshold = ucfg.getConfigValue("Threshold").toFloat();
 
     Serial.print("port: "); Serial.println(port);
     Serial.print("ipmqtt: "); Serial.println(ipmqtt);
@@ -44,12 +44,12 @@ void setup() {
     ucfg.initConfig("PIN", String(1234), "PIN untuk autentikasi", "int"); // WAJIB Untuk deklarasi PIN 
 
     // ucfg.initConfig("port", String(1845), "Port Node Red", "int");
-    ucfg.initConfig("ipmqtt", "192.168.1.1", "IP address MQTT Server", "string");
+    ucfg.initConfig("ipmqtt", "192.168.1.1", "IP address MQTT Server", "ip");
     ucfg.initConfig("usernamemqtt", "admin", "Username MQTT", "string");
     ucfg.initConfig("passwordmqtt", "admin", "Password MQTT", "string");
-    ucfg.initConfig("Threshold", String(88), "Threshold sistem pengairan", "int");
+    ucfg.initConfig("Threshold", String(88), "Threshold sistem pengairan", "float");
 
-    String configData = ucfg.readFromPreferences("config");
+    String configData = ucfg.readFromPreferences("config"); 
     Serial.println("Configuration loaded: " + configData);
 }
 
