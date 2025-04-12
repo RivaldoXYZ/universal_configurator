@@ -300,7 +300,8 @@ class DeviceScreenState extends State<DeviceScreen> {
   }
 
   Widget buildConfigForm() {
-    return ListView.builder(
+    return ListView.separated(
+      separatorBuilder: (context, index) => Divider(color: Colors.grey[300]), // Garis pemisah
       itemCount: configParameters.length,
       itemBuilder: (context, index) {
         final param = configParameters[index];
@@ -313,53 +314,75 @@ class DeviceScreenState extends State<DeviceScreen> {
         }
 
         return ListTile(
+          leading: Icon(
+            _getIconForType(param.type), // Tambahkan ikon berdasarkan tipe parameter
+            color: Colors.blue,
+          ),
           title: Text(param.desc),
           subtitle: Text("Value: ${param.value} (Type: ${param.type})"),
-          onTap: () => _showInputDialog(
-            title: "Edit ${param.desc}",
-            content: TextField(
-              controller: textController,
-              decoration: const InputDecoration(
-                labelText: "Value",
-                border: OutlineInputBorder(),
+          trailing: IconButton(
+            icon: const Icon(Icons.edit, color: Colors.blue),
+            onPressed: () => _showInputDialog(
+              title: "Edit ${param.desc}",
+              content: TextField(
+                controller: textController,
+                decoration: const InputDecoration(
+                  labelText: "Value",
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: inputType,
+                inputFormatters: const [],
+                maxLength: param.key == "PIN" ? 4 : null,
               ),
-              keyboardType: inputType,
-              inputFormatters: const [],
-              maxLength: param.key == "PIN" ? 4 : null,
+              onConfirm: () {
+                setState(() {
+                  String newValue = textController.text;
+
+                  if (param.type == "int") {
+                    if (int.tryParse(newValue) == null) {
+                      _showSnackbar("The input is not a valid integer. Please enter a valid integer.", Colors.red);
+                      return;
+                    }
+                  } else if (param.type == "float" || param.type == "double") {
+                    if (double.tryParse(newValue) == null || !newValue.contains('.')) {
+                      _showSnackbar("The input is not a valid number. Please enter a valid decimal number.", Colors.red);
+                      return;
+                    }
+                  } else if (param.type == "ip") {
+                    if (!_isValidIp(newValue)) {
+                      _showSnackbar("The input is not a valid IP address. Please enter a valid IPv4 address (0-255 for each octet).", Colors.red);
+                      return;
+                    }
+                  }
+
+                  if (param.key == "PIN" && newValue.length > 4) {
+                    param.value = newValue.substring(0, 4);
+                  } else {
+                    param.value = newValue;
+                  }
+                  originalValues[param.key] = param.value;
+                });
+              },
             ),
-            onConfirm: () {
-              setState(() {
-                String newValue = textController.text;
-
-                if (param.type == "int") {
-                  if (int.tryParse(newValue) == null) {
-                    _showSnackbar("The input is not a valid integer. Please enter a valid integer.", Colors.red);
-                    return;
-                  }
-                } else if (param.type == "float" || param.type == "double") {
-                  if (double.tryParse(newValue) == null || !newValue.contains('.')) {
-                    _showSnackbar("The input is not a valid number. Please enter a valid decimal number.", Colors.red);
-                    return;
-                  }
-                } else if (param.type == "ip") {
-                  if (!_isValidIp(newValue)) {
-                    _showSnackbar("The input is not a valid IP address. Please enter a valid IPv4 address (0-255 for each octet).", Colors.red);
-                    return;
-                  }
-                }
-
-                if (param.key == "PIN" && newValue.length > 4) {
-                  param.value = newValue.substring(0, 4);
-                } else {
-                  param.value = newValue;
-                }
-                originalValues[param.key] = param.value;
-              });
-            },
           ),
         );
       },
     );
+  }
+  /// Mendapatkan ikon berdasarkan tipe parameter
+  IconData _getIconForType(String type) {
+    switch (type) {
+      case "int":
+        return Icons.format_list_numbered;
+      case "float":
+      case "double":
+        return Icons.exposure;
+      case "ip":
+        return Icons.cloud;
+      case "string":
+      default:
+        return Icons.text_fields;
+    }
   }
 }
 

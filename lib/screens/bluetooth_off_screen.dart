@@ -4,11 +4,9 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:app_settings/app_settings.dart';
 import '../utils/snackbar.dart';
 
-
 class BluetoothOffScreen extends StatelessWidget {
   const BluetoothOffScreen({super.key, this.adapterState});
   final BluetoothAdapterState? adapterState;
-  
   Widget buildHeader(BuildContext context) {
     return Container(
       height: 100,
@@ -95,6 +93,17 @@ class BluetoothOffScreen extends StatelessWidget {
               children: <Widget>[
                 buildBluetoothOffIcon(context),
                 buildTitle(context),
+                const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Text(
+                    'Bluetooth is currently turned off \n Please turn on Bluetooth to continue using the app.',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.black54,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
                 if (Platform.isAndroid) buildTurnOnButton(context),
               ],
             ),
