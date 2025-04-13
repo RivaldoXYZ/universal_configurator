@@ -301,7 +301,7 @@ class DeviceScreenState extends State<DeviceScreen> {
 
   Widget buildConfigForm() {
     return ListView.separated(
-      separatorBuilder: (context, index) => Divider(color: Colors.grey[300]), // Garis pemisah
+      separatorBuilder: (context, index) => Divider(color: Colors.grey[300]),
       itemCount: configParameters.length,
       itemBuilder: (context, index) {
         final param = configParameters[index];
@@ -315,7 +315,7 @@ class DeviceScreenState extends State<DeviceScreen> {
 
         return ListTile(
           leading: Icon(
-            _getIconForType(param.type), // Tambahkan ikon berdasarkan tipe parameter
+            _getIconForType(param.type),
             color: Colors.blue,
           ),
           title: Text(param.desc),
@@ -369,7 +369,7 @@ class DeviceScreenState extends State<DeviceScreen> {
       },
     );
   }
-  /// Mendapatkan ikon berdasarkan tipe parameter
+
   IconData _getIconForType(String type) {
     switch (type) {
       case "int":

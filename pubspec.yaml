@@ -40,6 +40,7 @@ dependencies:
   shared_preferences: ^2.3.2
   flutter_blue_plus: ^1.32.12
   app_settings: ^5.1.1
+  collection: ^1.19.0
 
 dev_dependencies:
   flutter_test:
