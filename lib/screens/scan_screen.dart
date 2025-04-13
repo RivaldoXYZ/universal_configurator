@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'device_screen.dart';
 import '../utils/snackbar.dart';
 import '../widgets/scan_result_tile.dart';
@@ -17,6 +18,7 @@ class _ScanScreenState extends State<ScanScreen> {
   List<BluetoothDevice> _systemDevices = [];
   List<ScanResult> _scanResults = [];
   final List<String> _connectedDevices = [];
+  final List<String> _rememberedDevices = [];
   bool _isScanning = false;
   String _searchQuery = "";
 
@@ -26,15 +28,18 @@ class _ScanScreenState extends State<ScanScreen> {
   late StreamSubscription<bool> _isScanningSubscription;
 
   @override
+  @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await loadRememberedDevices();
+    });
 
     _scanResultsSubscription = FlutterBluePlus.scanResults.listen((results) {
       setState(() {
         _scanResults = results;
       });
-    }, onError: (e) {
-      Snackbar.show(context as ABC, "Scan Error: $e", success: false);
     });
 
     _isScanningSubscription = FlutterBluePlus.isScanning.listen((state) {
@@ -44,6 +49,19 @@ class _ScanScreenState extends State<ScanScreen> {
     });
 
     loadConnectedDevices();
+  }
+
+  Future<void> loadRememberedDevices() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _rememberedDevices.clear();
+      _rememberedDevices.addAll(prefs.getStringList('rememberedDevices') ?? []);
+    });
+  }
+
+  Future<void> saveRememberedDevices() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('rememberedDevices', _rememberedDevices);
   }
 
   Future<void> loadConnectedDevices() async {
@@ -103,6 +121,10 @@ class _ScanScreenState extends State<ScanScreen> {
         _deviceConnectingStatus[device.remoteId.str] = false;
       });
     }
+    if (!_rememberedDevices.contains(device.remoteId.str)) {
+      _rememberedDevices.add(device.remoteId.str);
+      await saveRememberedDevices();
+    }
   }
 
   Future<void> onDisconnectPressed(BluetoothDevice device) async {
@@ -117,6 +139,89 @@ class _ScanScreenState extends State<ScanScreen> {
       Snackbar.show(ABC.c, "Disconnect Error: $e", success: false);
     }
   }
+  List<Widget> _buildRememberedDeviceTiles() {
+    return _rememberedDevices.map((deviceId) {
+      final matchedResult = _scanResults.firstWhereOrNull(
+            (result) => result.device.remoteId.str == deviceId,
+      );
+      final BluetoothDevice? connectedDevice = _systemDevices.firstWhereOrNull(
+            (d) => d.remoteId.str == deviceId,
+      );
+
+      final isConnected = connectedDevice != null;
+      final deviceName = matchedResult?.device.platformName.isNotEmpty == true
+          ? matchedResult!.device.platformName
+          : (connectedDevice?.platformName.isNotEmpty == true
+          ? connectedDevice!.platformName
+          : "Unknown Device");
+
+      final status = isConnected
+          ? 'Connected'
+          : (matchedResult != null ? 'Available' : 'Unavailable');
+
+      return ListTile(
+        title: Text(deviceName),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(deviceId),
+            Text(
+              status,
+              style: TextStyle(
+                color: status == 'Connected'
+                    ? Colors.blue
+                    : (status == 'Available' ? Colors.green : Colors.grey),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        tileColor: isConnected ? Colors.green[100] : Colors.grey[200],
+        trailing: isConnected
+            ? Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (context) => DeviceScreen(device: connectedDevice),
+                ));
+              },
+              icon: const Icon(Icons.settings, color: Colors.white),
+              label: const Text(''),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[400],
+                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            ElevatedButton.icon(
+              onPressed: () => onDisconnectPressed(connectedDevice),
+              icon: const Icon(Icons.bluetooth_disabled, color: Colors.white),
+              label: const Text(''),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[400],
+                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+              ),
+            ),
+          ],
+        )
+            : (matchedResult != null
+            ? ElevatedButton(
+          onPressed: () => onConnectPressed(matchedResult.device),
+          child: const Text('Connect'),
+        )
+            : null),
+      );
+    }).toList();
+  }
+
 
   List<Widget> _buildConnectedDeviceTiles() {
     return _systemDevices.map((device) {
@@ -162,12 +267,18 @@ class _ScanScreenState extends State<ScanScreen> {
       );
     }).toList();
   }
-
   List<Widget> _buildScanResultTiles(BuildContext context) {
     return _scanResults.where((result) {
+      final deviceId = result.device.remoteId.str;
+
+      // Sembunyikan dari user jika device sudah di-remember
+      if (_rememberedDevices.contains(deviceId)) return false;
+
       final deviceName = result.device.platformName.isNotEmpty
           ? result.device.platformName
-          : result.device.remoteId.str;
+          : deviceId;
+
+      // Masih perlu filter pencarian
       return deviceName.toLowerCase().contains(_searchQuery.toLowerCase());
     }).map((r) {
       return ScanResultTile(
@@ -178,6 +289,7 @@ class _ScanScreenState extends State<ScanScreen> {
       );
     }).toList();
   }
+
 
   Widget buildScanButton(BuildContext context) {
     return FloatingActionButton(
@@ -266,7 +378,7 @@ class _ScanScreenState extends State<ScanScreen> {
                       padding: EdgeInsets.all(8.0),
                       child: Text('Connected Devices', style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                  ..._buildConnectedDeviceTiles(),
+                  ..._buildRememberedDeviceTiles(),
                   if (_scanResults.isNotEmpty)
                     const Padding(
                       padding: EdgeInsets.all(8.0),
